@@ -304,7 +304,7 @@ function AppContent() {
     setIsMobileMenuOpen(false);
   };
 
-  const currentWeek = data.config.current_week_key;
+  const currentWeek = data.config.current_week_key ?? '2026-W35';
 
   useEffect(() => {
     if (!selectedProjectId) return;
@@ -332,6 +332,10 @@ function AppContent() {
         return {
           id: generateId('LKH'),
           task_id: task.id,
+          phase_id: task.phase_id ?? null,
+          constraint_ids: data.constraints
+            .filter((c) => c.task_id === task.id)
+            .map((c) => c.id),
           week_key: currentWeek,
           planned_qty: 1,
           ready: openConstraints === 0,
@@ -540,6 +544,10 @@ function AppContent() {
         const newLookaheadItem: LookaheadItem = {
           id: generateId('LKH'),
           task_id: taskId,
+          phase_id: task.phase_id ?? null,
+          constraint_ids: data.constraints
+            .filter((c) => c.task_id === task.id)
+            .map((c) => c.id),
           week_key: weekKey,
           planned_qty: 1,
           ready: openConstraints === 0,
@@ -628,9 +636,34 @@ function AppContent() {
 
   // Commitment Actions
   const handleAddCommitment = (com: Commitment) => {
-    const updated = { ...data, commitments: [...data.commitments, com] };
+    const lookahead = data.lookahead.find(
+      (item) =>
+        item.task_id === com.task_id &&
+        item.week_key === com.week_key
+    );
+
+    const commitmentWithLookahead: Commitment = {
+      ...com,
+      lookahead_id:
+        com.lookahead_id ??
+        lookahead?.id ??
+        null
+    };
+
+    const updated = {
+      ...data,
+      commitments: [
+        ...data.commitments,
+        commitmentWithLookahead
+      ]
+    };
+
     updateData(updated);
-    showToast('Commitment promised and locked to Weekly Work Plan', 'success');
+
+    showToast(
+      'Commitment promised and linked to Lookahead activity',
+      'success'
+    );
   };
 
   const handleUpdateCommitmentOutcome = (

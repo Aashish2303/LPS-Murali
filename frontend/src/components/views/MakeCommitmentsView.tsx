@@ -247,6 +247,7 @@ export const MakeCommitmentsView: React.FC<MakeCommitmentsViewProps> = ({
 
       committed_by: committedByName.trim(),
       outcome: 'pending',
+      lookahead_id: selectedLookahead?.id ?? null,
 
       // Progress is calculated from actual quantities.
       progress_percent: 0,

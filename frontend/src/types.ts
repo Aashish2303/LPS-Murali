@@ -99,6 +99,8 @@ export interface Constraint {
 export interface LookaheadItem {
   id: string;
   task_id: string;
+  phase_id?: string | null;
+  constraint_ids?: string[];
   week_key: string;
   planned_qty: number;
   ready: boolean;
@@ -111,6 +113,7 @@ export interface Commitment {
   week_key: string;
   committed_by: string;
   outcome?: 'done' | 'not_done' | 'pending';
+  lookahead_id?: string | null;
   planned_qty?: number;
   actual_qty?: number;
   reason_code?: number;
