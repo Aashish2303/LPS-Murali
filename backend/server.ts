@@ -1004,14 +1004,31 @@ app.post(
           pull_planned: false,
           location: '',
           phase_id: null,
+
           description:
             row.description?.trim() ||
             row.name?.trim() ||
             `Phase Schedule Task ${slNo}`,
+
           responsible: '',
           duration_days: durationDays,
+
           must_finish_by:
             row.plannedFinish,
+
+          // NEW MASTER SCHEDULE DATES
+          eps: row.eps || null,
+          epf: row.epf || null,
+          lps: row.lps || null,
+          lpf: row.lpf || null,
+
+          // NEW FLOAT
+          float:
+            row.float !== undefined &&
+            row.float !== ''
+              ? Number(row.float)
+              : null,
+
           precedence_type: 'FS',
           predecessors
         };

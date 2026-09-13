@@ -58,6 +58,12 @@ export interface Task {
   uom: string;
   status: 'Planned' | 'In Progress' | 'Complete';
 
+  eps?: string;
+  epf?: string;
+  lps?: string;
+  lpf?: string;
+  float?: number | null;
+
   // Imported phase-schedule tasks are false by default.
   // They become true only when the user explicitly
   // selects them for Pull Planning.
@@ -120,6 +126,7 @@ export interface ActualEntry {
   planned_qty: number;
   achieved_qty: number;
   note?: string;
+  reason_code?: number | null;
 }
 
 export interface MetricRecord {
@@ -234,6 +241,7 @@ export type NavItemKey =
   | 'plan-pull'
   | 'plan-lookahead'
   | 'week-commit'
+  | 'weekly-work-plan'
   | 'week-daily'
   | 'week-closeout'
   | 'metrics-this-week'

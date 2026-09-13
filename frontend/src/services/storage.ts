@@ -201,6 +201,13 @@ export interface PhaseScheduleImportRow {
   plannedFinish: string;
   predecessors: string[];
   precedenceType: 'FS';
+
+  // CPM schedule fields
+  eps: string;
+  epf: string;
+  lps: string;
+  lpf: string;
+  float: number | null;
 }
 
 function normalizeHeader(value: unknown): string {
@@ -332,7 +339,12 @@ export async function parsePhaseScheduleFile(
     'description',
     'planned start',
     'planned finish',
-    'predecessor'
+    'predecessor',
+    'eps',
+    'epf',
+    'lps',
+    'lpf',
+    'float'
   ];
 
   const missingHeaders =
@@ -421,6 +433,47 @@ export async function parsePhaseScheduleFile(
             .filter(Boolean)
         : [];
 
+    const eps =
+      excelDateToISO(
+        getValue(row, 'eps')
+      );
+
+    const epf =
+      excelDateToISO(
+        getValue(row, 'epf')
+      );
+
+    const lps =
+      excelDateToISO(
+        getValue(row, 'lps')
+      );
+
+    const lpf =
+      excelDateToISO(
+        getValue(row, 'lpf')
+      );
+
+    const rawFloat =
+      getValue(row, 'float');
+
+    const floatValue =
+      rawFloat === '' ||
+      rawFloat === null ||
+      rawFloat === undefined
+        ? null
+        : Number(rawFloat);
+
+    if (
+      rawFloat !== '' &&
+      rawFloat !== null &&
+      rawFloat !== undefined &&
+      !Number.isFinite(floatValue)
+    ) {
+      throw new Error(
+        `Invalid Float for "${name}" at spreadsheet row ${index + 2}.`
+      );
+    }
+
     parsedRows.push({
       slNo,
       name,
@@ -428,7 +481,13 @@ export async function parsePhaseScheduleFile(
       plannedStart,
       plannedFinish,
       predecessors,
-      precedenceType: 'FS'
+      precedenceType: 'FS',
+
+      eps,
+      epf,
+      lps,
+      lpf,
+      float: floatValue
     });
   });
 

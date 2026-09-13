@@ -38,6 +38,11 @@ interface PreviewRow {
   plannedFinish: string;
   predecessors: string[];
   precedenceType: 'FS';
+  eps?: string;
+  epf?: string;
+  lps?: string;
+  lpf?: string;
+  float?: number | null;
 }
 
 export const PhaseScheduleView: React.FC<
@@ -626,6 +631,26 @@ export const PhaseScheduleView: React.FC<
                             Finish
                           </th>
 
+                          <th className="px-3 py-3 whitespace-nowrap">
+                            EPS
+                          </th>
+
+                          <th className="px-3 py-3 whitespace-nowrap">
+                            EPF
+                          </th>
+
+                          <th className="px-3 py-3 whitespace-nowrap">
+                            LPS
+                          </th>
+
+                          <th className="px-3 py-3 whitespace-nowrap">
+                            LPF
+                          </th>
+
+                          <th className="px-3 py-3 whitespace-nowrap">
+                            Float
+                          </th>
+
                           <th className="px-3 py-3">
                             Predecessor
                           </th>
@@ -670,6 +695,28 @@ export const PhaseScheduleView: React.FC<
                                 {formatDate(
                                   row.plannedFinish
                                 )}
+                              </td>
+
+                              <td className="px-3 py-3 text-xs text-[#cbd5e1] whitespace-nowrap">
+                                {row.eps || '—'}
+                              </td>
+
+                              <td className="px-3 py-3 text-xs text-[#cbd5e1] whitespace-nowrap">
+                                {row.epf || '—'}
+                              </td>
+
+                              <td className="px-3 py-3 text-xs text-[#cbd5e1] whitespace-nowrap">
+                                {row.lps || '—'}
+                              </td>
+
+                              <td className="px-3 py-3 text-xs text-[#cbd5e1] whitespace-nowrap">
+                                {row.lpf || '—'}
+                              </td>
+
+                              <td className="px-3 py-3 text-xs text-[#cbd5e1] whitespace-nowrap">
+                                {row.float !== null && row.float !== undefined
+                                  ? row.float
+                                  : '—'}
                               </td>
 
                               <td className="px-3 py-3">

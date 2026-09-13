@@ -1,5 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useNavigate,
+  useLocation
+} from 'react-router-dom';
+import {
   LPSData,
   NavItemKey,
   UserSession,
@@ -54,6 +62,7 @@ import { FacilitatorGuidesView } from './components/views/FacilitatorGuidesView'
 import { ProjectConfigView } from './components/views/ProjectConfigView';
 import { TradesAreasView } from './components/views/TradesAreasView';
 import { InitializeSystemView } from './components/views/InitializeSystemView';
+import { WeeklyWorkPlanView } from './components/views/WeeklyWorkPlanView';
 import { ProjectDashboard } from './components/ProjectDashboard';
 
 type ProjectRecordPayload = ProjectRecord & {
@@ -78,7 +87,7 @@ const normalizeProjectRecord = (project: ProjectRecordPayload): ProjectRecord =>
   data: project.data ?? loadLPSData()
 });
 
-export function App() {
+function AppContent() {
   // 1. User Session state
   const [user, setUser] = useState<UserSession | null>(() => {
     const email = getSessionUser();
@@ -144,8 +153,89 @@ export function App() {
 }, [user, selectedProjectId]);
 
   // 3. Navigation & Mobile Drawer state
-  const [activeNav, setActiveNav] = useState<NavItemKey>('dashboard');
+  const [activeNav, setActiveNav] = useState<NavItemKey>(() => {
+    const pathToNav: Record<string, NavItemKey> = {
+      '/dashboard': 'dashboard',
+      '/plan/phase': 'plan-phase',
+      '/plan/pull': 'plan-pull',
+      '/plan/lookahead': 'plan-lookahead',
+      '/week/commit': 'week-commit',
+      '/week/work-plan': 'weekly-work-plan',
+      '/week/daily': 'week-daily',
+      '/week/closeout': 'week-closeout',
+      '/metrics/this-week': 'metrics-this-week',
+      '/metrics/trends': 'metrics-trends',
+      '/metrics/coaching': 'metrics-coaching',
+      '/learn/centre': 'learn-centre',
+      '/learn/guides': 'learn-guides',
+      '/setup/config': 'setup-config',
+      '/setup/trades': 'setup-trades',
+      '/setup/init': 'setup-init'
+    };
+
+    return pathToNav[window.location.pathname] ?? 'dashboard';
+  });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
+
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const navToPath: Record<NavItemKey, string> = {
+    dashboard: '/dashboard',
+    'plan-phase': '/plan/phase',
+    'plan-pull': '/plan/pull',
+    'plan-lookahead': '/plan/lookahead',
+    'week-commit': '/week/commit',
+    'weekly-work-plan': '/week/work-plan',
+    'week-daily': '/week/daily',
+    'week-closeout': '/week/closeout',
+    'metrics-this-week': '/metrics/this-week',
+    'metrics-trends': '/metrics/trends',
+    'metrics-coaching': '/metrics/coaching',
+    'learn-centre': '/learn/centre',
+    'learn-guides': '/learn/guides',
+    'setup-config': '/setup/config',
+    'setup-trades': '/setup/trades',
+    'setup-init': '/setup/init',
+    'weekly-commit': '/week/commit',
+    'weekly-checkin': '/week/daily',
+    'weekly-closeout': '/week/closeout',
+    'metrics-week': '/metrics/this-week',
+    'learn-facilitator': '/learn/guides'
+  };
+
+  const navigateToNav = (nav: NavItemKey) => {
+    setActiveNav(nav);
+    navigate(navToPath[nav]);
+    setIsMobileMenuOpen(false);
+  };
+
+  useEffect(() => {
+    const pathToNav: Record<string, NavItemKey> = {
+      '/dashboard': 'dashboard',
+      '/plan/phase': 'plan-phase',
+      '/plan/pull': 'plan-pull',
+      '/plan/lookahead': 'plan-lookahead',
+      '/week/commit': 'week-commit',
+      '/week/work-plan': 'weekly-work-plan',
+      '/week/daily': 'week-daily',
+      '/week/closeout': 'week-closeout',
+      '/metrics/this-week': 'metrics-this-week',
+      '/metrics/trends': 'metrics-trends',
+      '/metrics/coaching': 'metrics-coaching',
+      '/learn/centre': 'learn-centre',
+      '/learn/guides': 'learn-guides',
+      '/setup/config': 'setup-config',
+      '/setup/trades': 'setup-trades',
+      '/setup/init': 'setup-init'
+    };
+
+    const nav = pathToNav[location.pathname];
+
+    if (nav && nav !== activeNav) {
+      setActiveNav(nav);
+    }
+  }, [location.pathname, activeNav]);
 
   // 4. Toast notification state
   const [toast, setToast] = useState<{
@@ -889,10 +979,7 @@ export function App() {
       {/* Left Sidebar (w-64 on mobile, w-56 on desktop) */}
       <Sidebar
         activeNav={activeNav}
-        onNavigate={(nav) => {
-          setActiveNav(nav);
-          setIsMobileMenuOpen(false);
-        }}
+        onNavigate={navigateToNav}
         openConstraintsCount={openConstraintsCount}
         user={user}
         onLogout={handleLogout}
@@ -910,10 +997,7 @@ export function App() {
           availableWeeks={availableWeeks}
           onSelectWeek={handleSelectWeek}
           user={user}
-          onNavigate={(nav) => {
-            setActiveNav(nav);
-            setIsMobileMenuOpen(false);
-          }}
+          onNavigate={navigateToNav}
           onLogout={handleLogout}
           onBackToProjects={handleBackToProjects}
           onToggleMobileMenu={() => setIsMobileMenuOpen((prev) => !prev)}
@@ -926,9 +1010,9 @@ export function App() {
               data={data}
               currentWeek={currentWeek}
               metrics={metrics}
-              onNavigate={(nav) => setActiveNav(nav)}
+              onNavigate={navigateToNav}
               onResolveConstraint={handleResolveConstraint}
-              onQuickLogConstraint={() => setActiveNav('plan-pull')}
+              onQuickLogConstraint={() => navigateToNav('plan-pull')}
             />
           )}
 
@@ -957,7 +1041,7 @@ export function App() {
               onAddToLookahead={handleAddToLookahead}
               onRefreshReadiness={handleRefreshReadiness}
               onResolveConstraint={handleResolveConstraint}
-              onNavigateToCommit={() => setActiveNav('week-commit')}
+              onNavigateToCommit={() => navigateToNav('week-commit')}
             />
           )}
 
@@ -966,7 +1050,14 @@ export function App() {
               data={data}
               currentWeek={currentWeek}
               onAddCommitment={handleAddCommitment}
-              onNavigateToCloseout={() => setActiveNav('week-closeout')}
+              onNavigateToCloseout={() => navigateToNav('week-closeout')}
+            />
+          )}
+
+          {activeNav === 'weekly-work-plan' && (
+            <WeeklyWorkPlanView
+              data={data}
+              currentWeek={currentWeek}
             />
           )}
 
@@ -985,7 +1076,7 @@ export function App() {
               currentWeek={currentWeek}
               onUpdateCommitmentOutcome={handleUpdateCommitmentOutcome}
               onCloseOutWeek={handleCloseOutWeek}
-              onNavigateToDashboard={() => setActiveNav('dashboard')}
+              onNavigateToDashboard={() => navigateToNav('dashboard')}
             />
           )}
 
@@ -994,7 +1085,7 @@ export function App() {
               data={data}
               currentWeek={currentWeek}
               metrics={metrics}
-              onNavigate={(nav) => setActiveNav(nav)}
+              onNavigate={navigateToNav}
             />
           )}
 
@@ -1044,12 +1135,20 @@ export function App() {
             <InitializeSystemView
               onLoadSampleData={handleResetSampleData}
               onLoadBlankProject={handleLoadBlankProject}
-              onNavigateToDashboard={() => setActiveNav('dashboard')}
+              onNavigateToDashboard={() => navigateToNav('dashboard')}
             />
           )}
         </main>
       </div>
     </div>
+  );
+}
+
+export function App() {
+  return (
+    <BrowserRouter>
+      <AppContent />
+    </BrowserRouter>
   );
 }
 

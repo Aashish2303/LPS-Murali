@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarCheck, ShieldAlert, CheckCircle2, Save, Calendar, Clock } from 'lucide-react';
-import { ActualEntry, LPSData } from '../../types';
+import { ActualEntry, LPSData, REASON_CODES } from '../../types';
 import { formatDate, generateId } from '../../services/storage';
 
 interface DailyCheckInViewProps {
@@ -87,6 +87,7 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
     planned: number;
     achieved: number;
     note: string;
+    reasonCode: number | null;
     saved: boolean;
   };
 
@@ -107,6 +108,7 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
               planned: Number(existingActual.planned_qty) || 0,
               achieved: Number(existingActual.achieved_qty) || 0,
               note: existingActual.note || '',
+              reasonCode: existingActual.reason_code ?? null,
               saved: true
             };
             return;
@@ -124,6 +126,7 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
                 : 0,
             achieved: 0,
             note: '',
+            reasonCode: null,
             saved: false
           };
         }
@@ -135,8 +138,8 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
 
   const handleRowChange = (
     commitmentId: string,
-    field: 'planned' | 'achieved' | 'note',
-    value: number | string
+    field: 'planned' | 'achieved' | 'note' | 'reasonCode',
+    value: number | string | null
   ) => {
     setRowStates((prev) => ({
       ...prev,
@@ -145,6 +148,7 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
           planned: 0,
           achieved: 0,
           note: '',
+          reasonCode: null,
           saved: false
         }),
         [field]: value,
@@ -157,6 +161,13 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
     const row = rowStates[commitmentId];
     if (!row) return;
 
+    const planned = Number(row.planned) || 0;
+    const achieved = Number(row.achieved) || 0;
+
+    if (achieved < planned && !row.reasonCode) {
+      return;
+    }
+
     const existingActual = data.actuals.find(
       (a) =>
         a.commitment_id === commitmentId &&
@@ -167,9 +178,10 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
       id: existingActual?.id || generateId('ACT'),
       commitment_id: commitmentId,
       day_date: todayIso,
-      planned_qty: Math.max(0, Number(row.planned) || 0),
-      achieved_qty: Math.max(0, Number(row.achieved) || 0),
-      note: row.note?.trim() || ''
+      planned_qty: Math.max(0, planned),
+      achieved_qty: Math.max(0, achieved),
+      note: row.note?.trim() || '',
+      reason_code: achieved < planned ? row.reasonCode : null
     };
 
     onSaveDailyActual(actual);
@@ -312,6 +324,42 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
                       onChange={(e) => handleRowChange(commitment.id, 'note', e.target.value)}
                       className="w-full px-2.5 py-1.5 bg-[#1e293b] border border-[#334155] rounded text-xs text-[#f8fafc] placeholder-[#64748b] focus:border-[#f59e0b] focus:outline-none"
                     />
+
+                    {Number(row.achieved || 0) < Number(row.planned || 0) && (
+                      <div className="mt-3 p-3 rounded-lg bg-red-500/10 border border-red-500/30">
+                        <label className="block text-xs font-bold text-red-400 mb-2">
+                          Delay Reason Code *
+                        </label>
+
+                        <select
+                          value={row.reasonCode ?? ''}
+                          onChange={(e) =>
+                            handleRowChange(
+                              commitment.id,
+                              'reasonCode',
+                              e.target.value ? Number(e.target.value) : null
+                            )
+                          }
+                          className="w-full px-3 py-2 bg-[#0f172a] border border-red-500/40 rounded-lg text-xs text-[#f8fafc] focus:outline-none"
+                        >
+                          <option value="">
+                            Select delay reason...
+                          </option>
+
+                          {REASON_CODES.map((rc) => (
+                            <option key={rc.id} value={rc.id}>
+                              {rc.code}: {rc.title}
+                            </option>
+                          ))}
+                        </select>
+
+                        {!row.reasonCode && (
+                          <p className="text-[10px] text-red-400 mt-1">
+                            Required when actual is less than planned.
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Save Button */}
