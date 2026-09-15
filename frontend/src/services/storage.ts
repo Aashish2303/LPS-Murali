@@ -551,9 +551,11 @@ export async function importPhaseSchedule(
 
   if (!response.ok) {
     throw new Error(
-      result?.message ||
-      result?.error ||
-      'Failed to import phase schedule.'
+      result?.details
+        ? `${result?.message || 'Phase schedule import failed'}: ${result.details}`
+        : result?.message ||
+          result?.error ||
+          'Failed to import phase schedule.'
     );
   }
 
