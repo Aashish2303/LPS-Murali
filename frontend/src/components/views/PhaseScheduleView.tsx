@@ -359,6 +359,10 @@ export const PhaseScheduleView: React.FC<
       ).getTime()
   );
 
+  const phaseScheduleTasks = data.tasks.filter(
+    (task) => task.trade === 'Phase Schedule'
+  );
+
   // ---------------------------------------------------------
   // UI
   // ---------------------------------------------------------
@@ -1006,6 +1010,101 @@ export const PhaseScheduleView: React.FC<
 
         </form>
 
+      </div>
+
+
+      {/* =====================================================
+          IMPORTED PHASE SCHEDULE ACTIVITIES
+      ====================================================== */}
+
+      <div
+        id="imported-phase-schedule-activities"
+        className="space-y-4"
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold text-[#f8fafc] flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-[#38bdf8]" />
+            <span>Phase Schedule Activities</span>
+
+            <span className="px-2 py-0.5 rounded-full bg-[#0f172a] border border-[#334155] text-[#38bdf8] text-[10px]">
+              {phaseScheduleTasks.length} Activities
+            </span>
+          </h3>
+        </div>
+
+        {phaseScheduleTasks.length === 0 ? (
+          <div className="p-8 text-center bg-[#1e293b] border border-dashed border-[#334155] rounded-lg">
+            <p className="text-sm font-semibold text-[#f8fafc]">
+              No Phase Schedule Activities Imported
+            </p>
+            <p className="text-xs text-[#94a3b8] mt-1">
+              Import the master phase schedule above.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-[#334155] bg-[#1e293b]">
+            <table className="w-full text-xs">
+              <thead className="bg-[#0f172a]">
+                <tr className="text-left text-[#94a3b8]">
+                  <th className="px-4 py-3">ID</th>
+                  <th className="px-4 py-3">Activity</th>
+                  <th className="px-4 py-3">Start</th>
+                  <th className="px-4 py-3">Finish</th>
+                  <th className="px-4 py-3">EPS</th>
+                  <th className="px-4 py-3">EPF</th>
+                  <th className="px-4 py-3">LPS</th>
+                  <th className="px-4 py-3">LPF</th>
+                  <th className="px-4 py-3">Float</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {phaseScheduleTasks.map((task) => (
+                  <tr
+                    key={task.id}
+                    className="border-t border-[#334155] hover:bg-[#334155]/30"
+                  >
+                    <td className="px-4 py-3 font-mono text-[#64748b]">
+                      {task.id}
+                    </td>
+
+                    <td className="px-4 py-3 font-semibold text-[#f8fafc] min-w-[220px]">
+                      {task.description}
+                    </td>
+
+                    <td className="px-4 py-3 text-[#cbd5e1]">
+                      {task.planned_start || '—'}
+                    </td>
+
+                    <td className="px-4 py-3 text-[#cbd5e1]">
+                      {task.must_finish_by || '—'}
+                    </td>
+
+                    <td className="px-4 py-3 text-[#cbd5e1]">
+                      {task.eps || '—'}
+                    </td>
+
+                    <td className="px-4 py-3 text-[#cbd5e1]">
+                      {task.epf || '—'}
+                    </td>
+
+                    <td className="px-4 py-3 text-[#cbd5e1]">
+                      {task.lps || '—'}
+                    </td>
+
+                    <td className="px-4 py-3 text-[#cbd5e1]">
+                      {task.lpf || '—'}
+                    </td>
+
+                    <td className="px-4 py-3 font-bold">
+                      {task.float ?? '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
 
