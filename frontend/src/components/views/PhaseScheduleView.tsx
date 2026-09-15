@@ -13,7 +13,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 
-import { LPSData, Phase } from '../../types';
+import { LPSData, Phase, Task } from '../../types';
 import {
   formatDate,
   generateId,
@@ -28,6 +28,7 @@ interface PhaseScheduleViewProps {
     phaseId: string,
     status: Phase['status']
   ) => void;
+  onImportTasks: (tasks: Task[]) => void;
 }
 
 interface PreviewRow {
@@ -50,7 +51,8 @@ export const PhaseScheduleView: React.FC<
 > = ({
   data,
   onAddPhase,
-  onUpdatePhaseStatus
+  onUpdatePhaseStatus,
+  onImportTasks
 }) => {
   // ---------------------------------------------------------
   // MANUAL PHASE FORM
@@ -300,17 +302,10 @@ export const PhaseScheduleView: React.FC<
         }.`
       );
 
-      /*
-       * The backend has now written the phases/tasks
-       * into Supabase.
-       *
-       * Reload once so App.tsx performs its normal
-       * project synchronization and every existing
-       * module immediately receives the new tasks.
-       */
-      setTimeout(() => {
-        window.location.reload();
-      }, 700);
+      onImportTasks(result.tasks);
+
+      setSelectedFile(null);
+      setPreviewRows([]);
     } catch (error: any) {
       console.error(
         'Phase schedule import failed:',

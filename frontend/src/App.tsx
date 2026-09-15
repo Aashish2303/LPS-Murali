@@ -411,6 +411,38 @@ function AppContent() {
     updateData(updated);
   };
 
+  const handleImportTasks = (importedTasks: Task[]) => {
+    const importedById = new Map(
+      importedTasks.map((task) => [task.id, task])
+    );
+
+    const updatedTasks = data.tasks.map(
+      (existingTask) =>
+        importedById.get(existingTask.id) ?? existingTask
+    );
+
+    const existingIds = new Set(
+      data.tasks.map((task) => task.id)
+    );
+
+    const newTasks = importedTasks.filter(
+      (task) => !existingIds.has(task.id)
+    );
+
+    updateData({
+      ...data,
+      tasks: [
+        ...updatedTasks,
+        ...newTasks
+      ]
+    });
+
+    showToast(
+      `${importedTasks.length} phase schedule tasks imported successfully`,
+      'success'
+    );
+  };
+
   // Task Actions
   const handleAddTask = (t: Task) => {
     const updated = { ...data, tasks: [...data.tasks, t] };
@@ -1054,6 +1086,7 @@ function AppContent() {
               data={data}
               onAddPhase={handleAddPhase}
               onUpdatePhaseStatus={handleUpdatePhaseStatus}
+              onImportTasks={handleImportTasks}
             />
           )}
 
