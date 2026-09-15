@@ -1002,6 +1002,7 @@ app.post(
           trade: 'Phase Schedule',
           status: 'Planned',
           pull_planned: false,
+          lookahead_planned: false,
           location: '',
           phase_id: null,
 

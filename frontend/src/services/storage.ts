@@ -456,7 +456,7 @@ export async function parsePhaseScheduleFile(
     const rawFloat =
       getValue(row, 'float');
 
-    const floatValue =
+    const float =
       rawFloat === '' ||
       rawFloat === null ||
       rawFloat === undefined
@@ -464,10 +464,8 @@ export async function parsePhaseScheduleFile(
         : Number(rawFloat);
 
     if (
-      rawFloat !== '' &&
-      rawFloat !== null &&
-      rawFloat !== undefined &&
-      !Number.isFinite(floatValue)
+      float !== null &&
+      !Number.isFinite(float)
     ) {
       throw new Error(
         `Invalid Float for "${name}" at spreadsheet row ${index + 2}.`
@@ -487,7 +485,7 @@ export async function parsePhaseScheduleFile(
       epf,
       lps,
       lpf,
-      float: floatValue
+      float
     });
   });
 
