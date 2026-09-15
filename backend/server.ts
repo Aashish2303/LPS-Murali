@@ -1064,7 +1064,9 @@ app.post(
       const { data: insertedTasks, error: insertError } =
         await supabase
           .from('tasks')
-          .insert(tasks)
+          .upsert(tasks, {
+            onConflict: 'id'
+          })
           .select('*');
 
       if (insertError) {
