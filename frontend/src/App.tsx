@@ -306,67 +306,6 @@ function AppContent() {
 
   const currentWeek = data.config.current_week_key ?? '2026-W35';
 
-  useEffect(() => {
-    if (!selectedProjectId) return;
-
-    const missingLookaheadTasks = data.tasks.filter(
-      (task) =>
-        task.pull_planned === true &&
-        !data.lookahead.some(
-          (item) => item.task_id === task.id
-        )
-    );
-
-    if (missingLookaheadTasks.length === 0) {
-      return;
-    }
-
-    const newLookaheadItems: LookaheadItem[] =
-      missingLookaheadTasks.map((task) => {
-        const openConstraints =
-          getOpenConstraintCount(
-            task.id,
-            data.constraints
-          );
-
-        return {
-          id: generateId('LKH'),
-          task_id: task.id,
-          phase_id: task.phase_id ?? null,
-          constraint_ids: data.constraints
-            .filter((c) => c.task_id === task.id)
-            .map((c) => c.id),
-          week_key: currentWeek,
-          planned_qty: 1,
-          ready: openConstraints === 0,
-          notes: 'Automatically added from Pull Planning'
-        };
-      });
-
-    const updatedTasks = data.tasks.map((task) =>
-      missingLookaheadTasks.some(
-        (missing) => missing.id === task.id
-      )
-        ? {
-            ...task,
-            lookahead_planned: true
-          }
-        : task
-    );
-
-    void updateData({
-      ...data,
-      tasks: updatedTasks,
-      lookahead: refreshLookaheadReadiness(
-        [
-          ...data.lookahead,
-          ...newLookaheadItems
-        ],
-        data.constraints
-      )
-    });
-  }, [selectedProjectId, data.tasks, data.lookahead]);
-
   // Compute live metrics for the current week
   const metrics = useMemo(() => computeMetrics(currentWeek, data), [currentWeek, data]);
 
