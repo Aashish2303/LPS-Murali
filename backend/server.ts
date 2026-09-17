@@ -1003,6 +1003,14 @@ app.post(
           status: 'Planned',
           pull_planned: false,
           lookahead_planned: false,
+
+          total_quantity: row.quantity,
+
+          daily_planned_quantity:
+            durationDays > 0
+              ? row.quantity / durationDays
+              : row.quantity,
+
           location: '',
           phase_id: null,
 

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -21,6 +21,39 @@ import {
   formatDate,
   getOpenConstraintCount
 } from '../../services/storage';
+
+const getWeekStart = (weekKey: string) => {
+  const match = weekKey.match(/^(\d{4})-W(\d{2})$/);
+
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const week = Number(match[2]);
+
+  const jan4 = new Date(year, 0, 4);
+  const day = jan4.getDay() || 7;
+
+  const monday = new Date(jan4);
+  monday.setDate(
+    jan4.getDate() - day + 1 + (week - 1) * 7
+  );
+
+  monday.setHours(0, 0, 0, 0);
+
+  return monday;
+};
+
+const getWeekEnd = (weekKey: string) => {
+  const start = getWeekStart(weekKey);
+
+  if (!start) return null;
+
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+
+  return end;
+};
 
 interface LookaheadViewProps {
   data: LPSData;
@@ -45,20 +78,181 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
    * ---------------------------------------------------------
    */
 
-  /*
-   * ---------------------------------------------------------
-   * CURRENT LOOKAHEAD ITEMS
-   * ---------------------------------------------------------
-   */
+  const [lookaheadWeeks, setLookaheadWeeks] =
+    useState<3 | 4 | 5>(4);
 
-  const lookaheadItems = data.lookahead.filter(
-    (item) =>
-      data.tasks.some(
-        (task) =>
-          task.id === item.task_id &&
-          task.pull_planned === true
-      )
+  const getWeekOffset = (weekKey: string) => {
+    const match = weekKey.match(
+      /^(\d{4})-W(\d{2})$/
+    );
+
+    if (!match) return null;
+
+    return {
+      year: Number(match[1]),
+      week: Number(match[2])
+    };
+  };
+
+  const current = getWeekOffset(currentWeek);
+
+  const isWithinLookaheadHorizon = (
+    weekKey: string
+  ) => {
+    if (!current) return false;
+
+    const target = getWeekOffset(weekKey);
+
+    if (!target) return false;
+
+    const currentIndex =
+      current.year * 52 + current.week;
+
+    const targetIndex =
+      target.year * 52 + target.week;
+
+    const difference =
+      targetIndex - currentIndex;
+
+    return (
+      difference >= 0 &&
+      difference < lookaheadWeeks
+    );
+  };
+
+  const phaseScheduleTasks = data.tasks.filter(
+    (task) =>
+      task.trade === 'Phase Schedule' &&
+      task.pull_planned === true
   );
+
+  const generatedLookaheadItems: LookaheadItem[] = [];
+
+  phaseScheduleTasks.forEach((task) => {
+    const taskStart = task.eps
+      ? new Date(task.eps)
+      : null;
+
+    const taskFinish = task.epf
+      ? new Date(task.epf)
+      : task.must_finish_by
+        ? new Date(task.must_finish_by)
+        : null;
+
+    if (!taskStart || !taskFinish) return;
+
+    const totalQuantity =
+      Number(task.total_quantity) || 0;
+
+    const durationDays =
+      Number(task.duration_days) || 1;
+
+    const dailyQuantity =
+      Number(task.daily_planned_quantity) ||
+      totalQuantity / durationDays;
+
+    for (let offset = 0; offset < lookaheadWeeks; offset++) {
+      if (!current) continue;
+
+      const weekNumber = current.week + offset;
+
+      let year = current.year;
+      let normalizedWeek = weekNumber;
+
+      if (normalizedWeek > 52) {
+        year += Math.floor((normalizedWeek - 1) / 52);
+        normalizedWeek =
+          ((normalizedWeek - 1) % 52) + 1;
+      }
+
+      const weekKey =
+        `${year}-W${String(normalizedWeek).padStart(2, '0')}`;
+
+      const weekStart = getWeekStart(weekKey);
+      const weekEnd = getWeekEnd(weekKey);
+
+      if (!weekStart || !weekEnd) continue;
+
+      const overlapsWeek =
+        taskStart <= weekEnd &&
+        taskFinish >= weekStart;
+
+      if (!overlapsWeek) continue;
+
+      const effectiveStart =
+        taskStart > weekStart
+          ? taskStart
+          : weekStart;
+
+      const effectiveFinish =
+        taskFinish < weekEnd
+          ? taskFinish
+          : weekEnd;
+
+      const daysInWeek =
+        Math.max(
+          1,
+          Math.floor(
+            (
+              effectiveFinish.getTime() -
+              effectiveStart.getTime()
+            ) /
+              86400000
+          ) + 1
+        );
+
+      const plannedQty =
+        Math.round(
+          dailyQuantity * daysInWeek * 100
+        ) / 100;
+
+      const existingItem =
+        data.lookahead.find(
+          (item) =>
+            item.task_id === task.id &&
+            item.week_key === weekKey
+        );
+
+      generatedLookaheadItems.push({
+        id:
+          existingItem?.id ??
+          `LKH-${task.id}-${weekKey}`,
+
+        task_id: task.id,
+
+        phase_id:
+          task.phase_id ?? null,
+
+        constraint_ids:
+          existingItem?.constraint_ids ?? [],
+
+        week_key: weekKey,
+
+        planned_qty:
+          existingItem?.planned_qty ??
+          plannedQty,
+
+        carry_forward_qty:
+          existingItem?.carry_forward_qty ?? 0,
+
+        remaining_qty:
+          existingItem?.remaining_qty ??
+          plannedQty,
+
+        ready:
+          getOpenConstraintCount(
+            task.id,
+            data.constraints
+          ) === 0,
+
+        notes:
+          existingItem?.notes ?? ''
+      });
+    }
+  });
+
+  const lookaheadItems =
+    generatedLookaheadItems;
 
   const totalTasks = lookaheadItems.length;
 
@@ -196,6 +390,39 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
           <div className="text-xs text-[#94a3b8] mt-1">
             Target: ≥ 70% make-ready throughput
           </div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-4 rounded-lg border border-[#334155] bg-[#1e293b] p-4">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-[#94a3b8]">
+            Lookahead Horizon
+          </span>
+
+          <div className="text-xs font-bold text-[#f8fafc]">
+            {currentWeek}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {[3, 4, 5].map((weeks) => (
+            <button
+              key={weeks}
+              type="button"
+              onClick={() =>
+                setLookaheadWeeks(
+                  weeks as 3 | 4 | 5
+                )
+              }
+              className={`px-3 py-1.5 rounded-md text-xs font-bold border transition-colors ${
+                lookaheadWeeks === weeks
+                  ? 'bg-[#38bdf8] text-[#0f172a] border-[#38bdf8]'
+                  : 'bg-[#0f172a] text-[#94a3b8] border-[#334155] hover:bg-[#1e293b]'
+              }`}
+            >
+              {weeks} Weeks
+            </button>
+          ))}
         </div>
       </div>
 

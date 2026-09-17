@@ -202,12 +202,13 @@ export interface PhaseScheduleImportRow {
   predecessors: string[];
   precedenceType: 'FS';
 
-  // CPM schedule fields
   eps: string;
   epf: string;
   lps: string;
   lpf: string;
   float: number | null;
+
+  quantity: number;
 }
 
 function normalizeHeader(value: unknown): string {
@@ -344,7 +345,8 @@ export async function parsePhaseScheduleFile(
     'epf',
     'lps',
     'lpf',
-    'float'
+    'float',
+    'quantity'
   ];
 
   const missingHeaders =
@@ -472,6 +474,19 @@ export async function parsePhaseScheduleFile(
       );
     }
 
+    const quantityValue = Number(
+      getValue(row, 'quantity') ?? 0
+    );
+
+    if (
+      !Number.isFinite(quantityValue) ||
+      quantityValue < 0
+    ) {
+      throw new Error(
+        `Task "${name}" has an invalid quantity.`
+      );
+    }
+
     parsedRows.push({
       slNo,
       name,
@@ -485,7 +500,9 @@ export async function parsePhaseScheduleFile(
       epf,
       lps,
       lpf,
-      float
+      float,
+
+      quantity: quantityValue
     });
   });
 

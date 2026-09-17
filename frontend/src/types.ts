@@ -58,6 +58,9 @@ export interface Task {
   uom: string;
   status: 'Planned' | 'In Progress' | 'Complete';
 
+  total_quantity?: number;
+  daily_planned_quantity?: number;
+
   eps?: string;
   epf?: string;
   lps?: string;
@@ -93,7 +96,7 @@ export interface Constraint {
   raised_date: string;
   target_date: string;
   status: 'Open' | 'Resolved';
-  resolved_date?: string;
+  resolved_date?: string | null;
 }
 
 export interface LookaheadItem {
@@ -102,7 +105,11 @@ export interface LookaheadItem {
   phase_id?: string | null;
   constraint_ids?: string[];
   week_key: string;
+
   planned_qty: number;
+  carry_forward_qty?: number;
+  remaining_qty?: number;
+
   ready: boolean;
   notes?: string;
 }

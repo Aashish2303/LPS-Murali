@@ -36,14 +36,41 @@ import { Modal } from '../Modal';
 
 interface PullPlanningViewProps {
   data: LPSData;
+  currentWeek: string;
   onAddTask: (task: Task) => void;
   onDeleteTask: (taskId: string) => void;
   onAddConstraint: (constraint: Constraint) => void;
   onTogglePullPlanTask: (taskId: string) => void;
 }
 
+const getWeekRange = (weekKey: string) => {
+  const match = weekKey.match(/^(\d{4})-W(\d{2})$/);
+
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const week = Number(match[2]);
+
+  const jan4 = new Date(year, 0, 4);
+  const day = jan4.getDay() || 7;
+
+  const monday = new Date(jan4);
+  monday.setDate(jan4.getDate() - day + 1 + (week - 1) * 7);
+  monday.setHours(0, 0, 0, 0);
+
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23, 59, 59, 999);
+
+  return {
+    start: monday,
+    end: sunday
+  };
+};
+
 export const PullPlanningView: React.FC<PullPlanningViewProps> = ({
   data,
+  currentWeek,
   onAddTask,
   onDeleteTask,
   onAddConstraint,
@@ -55,9 +82,33 @@ export const PullPlanningView: React.FC<PullPlanningViewProps> = ({
    * ---------------------------------------------------------
    */
 
-  const availableTasks = data.tasks.filter(
-    (task) => !(task.pull_planned ?? false)
-  );
+  const currentWeekRange = getWeekRange(currentWeek);
+
+  const availableTasks = data.tasks.filter((task) => {
+    if (task.pull_planned) return false;
+
+    if (!currentWeekRange) return false;
+
+    const taskStart = task.eps
+      ? new Date(task.eps)
+      : null;
+
+    const taskFinish = task.epf
+      ? new Date(task.epf)
+      : task.must_finish_by
+        ? new Date(task.must_finish_by)
+        : null;
+
+    if (!taskStart && !taskFinish) return false;
+
+    const startsBeforeWeekEnds =
+      !taskStart || taskStart <= currentWeekRange.end;
+
+    const finishesAfterWeekStarts =
+      !taskFinish || taskFinish >= currentWeekRange.start;
+
+    return startsBeforeWeekEnds && finishesAfterWeekStarts;
+  });
 
   const pullPlannedTasks = data.tasks.filter(
     (task) => task.pull_planned === true
@@ -354,7 +405,11 @@ export const PullPlanningView: React.FC<PullPlanningViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2 text-xs">
+        <div className="flex items-center gap-2 text-xs flex-wrap">
+          <span className="px-3 py-1.5 rounded-full bg-[#0f172a] border border-[#334155] text-[#38bdf8]">
+            Planning Week: <strong>{currentWeek}</strong>
+          </span>
+
           <span className="px-3 py-1.5 rounded-full bg-slate-900 border border-[#334155] text-[#94a3b8]">
             <strong className="text-[#f8fafc]">
               {pullPlannedTasks.length}

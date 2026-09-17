@@ -88,6 +88,10 @@ export const PhaseScheduleView: React.FC<
   const [errorMessage, setErrorMessage] =
     useState('');
 
+  const phaseScheduleTasks = data.tasks
+    .filter((task) => task.trade === 'Phase Schedule')
+    .sort((a, b) => a.id.localeCompare(b.id));
+
   // ---------------------------------------------------------
   // MANUAL PHASE CREATION
   // ---------------------------------------------------------
@@ -357,10 +361,6 @@ export const PhaseScheduleView: React.FC<
       new Date(
         b.planned_start
       ).getTime()
-  );
-
-  const phaseScheduleTasks = data.tasks.filter(
-    (task) => task.trade === 'Phase Schedule'
   );
 
   // ---------------------------------------------------------
@@ -1018,27 +1018,36 @@ export const PhaseScheduleView: React.FC<
       ====================================================== */}
 
       <div
-        id="imported-phase-schedule-activities"
+        id="phase-schedule-activities"
         className="space-y-4"
       >
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold text-[#f8fafc] flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-[#38bdf8]" />
-            <span>Phase Schedule Activities</span>
+          <div>
+            <h3 className="text-sm font-bold text-[#f8fafc] flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-[#f59e0b]" />
+              <span>Imported Phase Schedule</span>
 
-            <span className="px-2 py-0.5 rounded-full bg-[#0f172a] border border-[#334155] text-[#38bdf8] text-[10px]">
-              {phaseScheduleTasks.length} Activities
-            </span>
-          </h3>
+              <span className="px-2 py-0.5 rounded-full bg-[#0f172a] border border-[#334155] text-[#38bdf8] text-[10px]">
+                {phaseScheduleTasks.length} Activities
+              </span>
+            </h3>
+
+            <p className="text-xs text-[#94a3b8] mt-1">
+              Master schedule activities imported from the project Excel.
+            </p>
+          </div>
         </div>
 
         {phaseScheduleTasks.length === 0 ? (
           <div className="p-8 text-center bg-[#1e293b] border border-dashed border-[#334155] rounded-lg">
-            <p className="text-sm font-semibold text-[#f8fafc]">
-              No Phase Schedule Activities Imported
+            <FileSpreadsheet className="w-10 h-10 mx-auto text-[#64748b] mb-2" />
+
+            <p className="font-semibold text-[#f8fafc]">
+              No Phase Schedule Imported
             </p>
-            <p className="text-xs text-[#94a3b8] mt-1">
-              Import the master phase schedule above.
+
+            <p className="text-xs mt-1 text-[#94a3b8]">
+              Import the project schedule Excel above.
             </p>
           </div>
         ) : (
@@ -1046,15 +1055,15 @@ export const PhaseScheduleView: React.FC<
             <table className="w-full text-xs">
               <thead className="bg-[#0f172a]">
                 <tr className="text-left text-[#94a3b8]">
-                  <th className="px-4 py-3">ID</th>
                   <th className="px-4 py-3">Activity</th>
-                  <th className="px-4 py-3">Start</th>
                   <th className="px-4 py-3">Finish</th>
                   <th className="px-4 py-3">EPS</th>
                   <th className="px-4 py-3">EPF</th>
                   <th className="px-4 py-3">LPS</th>
                   <th className="px-4 py-3">LPF</th>
                   <th className="px-4 py-3">Float</th>
+                  <th className="px-4 py-3">Quantity</th>
+                  <th className="px-4 py-3">Daily Plan</th>
                 </tr>
               </thead>
 
@@ -1064,16 +1073,14 @@ export const PhaseScheduleView: React.FC<
                     key={task.id}
                     className="border-t border-[#334155] hover:bg-[#334155]/30"
                   >
-                    <td className="px-4 py-3 font-mono text-[#64748b]">
-                      {task.id}
-                    </td>
+                    <td className="px-4 py-3 min-w-[240px]">
+                      <div className="font-semibold text-[#f8fafc]">
+                        {task.description}
+                      </div>
 
-                    <td className="px-4 py-3 font-semibold text-[#f8fafc] min-w-[220px]">
-                      {task.description}
-                    </td>
-
-                    <td className="px-4 py-3 text-[#cbd5e1]">
-                      {task.planned_start || '—'}
+                      <div className="text-[10px] text-[#64748b] mt-1">
+                        {task.id}
+                      </div>
                     </td>
 
                     <td className="px-4 py-3 text-[#cbd5e1]">
@@ -1096,8 +1103,18 @@ export const PhaseScheduleView: React.FC<
                       {task.lpf || '—'}
                     </td>
 
-                    <td className="px-4 py-3 font-bold">
+                    <td className="px-4 py-3 font-semibold text-[#f59e0b]">
                       {task.float ?? '—'}
+                    </td>
+
+                    <td className="px-4 py-3 font-bold text-[#f8fafc]">
+                      {task.total_quantity ?? '—'}
+                    </td>
+
+                    <td className="px-4 py-3 font-semibold text-[#38bdf8]">
+                      {task.daily_planned_quantity
+                        ? Number(task.daily_planned_quantity).toFixed(2)
+                        : '—'}
                     </td>
                   </tr>
                 ))}

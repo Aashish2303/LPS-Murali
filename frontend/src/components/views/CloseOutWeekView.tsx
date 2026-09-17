@@ -19,8 +19,7 @@ interface CloseOutWeekViewProps {
   onUpdateCommitmentOutcome: (commitmentId: string, outcome: 'done' | 'not_done', reasonCode?: number, actualQty?: number) => void;
   onCloseOutWeek: (
     weekKey: string,
-    finalPpc: number,
-    closeoutDate: string
+    finalPpc: number
   ) => void;
   onNavigateToDashboard: () => void;
 }
@@ -114,8 +113,7 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
 
     onCloseOutWeek(
       currentWeek,
-      livePpc,
-      closeoutDate
+      livePpc
     );
 
     setClosedPpc(livePpc);

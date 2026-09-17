@@ -307,7 +307,7 @@ function AppContent() {
   const currentWeek = data.config.current_week_key ?? '2026-W35';
 
   // Compute live metrics for the current week
-  const metrics = useMemo(() => computeMetrics(currentWeek, data), [currentWeek, data]);
+  const metrics = computeMetrics(currentWeek, data);
 
   // Compute total open constraints
   const openConstraintsCount = useMemo(() => getOpenConstraintsCountTotal(data.constraints), [data.constraints]);
@@ -401,158 +401,77 @@ function AppContent() {
   };
 
   const handleTogglePullPlanTask = (taskId: string) => {
-    const task = data.tasks.find(
-      (t) => t.id === taskId
-    );
-
+    const task = data.tasks.find((t) => t.id === taskId);
     if (!task) return;
 
-    const newPullPlanned =
-      !(task.pull_planned ?? false);
-
-    /*
-     * ---------------------------------------------------------
-     * UPDATE TASK PULL-PLANNED STATUS
-     * ---------------------------------------------------------
-     */
+    const newPullPlanned = !(task.pull_planned ?? false);
 
     const updatedTasks = data.tasks.map((t) =>
       t.id === taskId
         ? {
             ...t,
-              pull_planned: newPullPlanned,
-              lookahead_planned: newPullPlanned
+            pull_planned: newPullPlanned,
+            lookahead_planned: newPullPlanned
           }
         : t
     );
 
-    /*
-     * ---------------------------------------------------------
-     * AUTOMATIC PULL PLAN → LOOKAHEAD FLOW
-     * ---------------------------------------------------------
-     *
-     * When a task is selected for Pull Planning:
-     *
-     * 1. Automatically create its Lookahead record.
-     * 2. Use the task's scheduled finish date to determine
-     *    the initial Lookahead week.
-     * 3. Automatically calculate readiness from constraints.
-     *
-     * When a task is removed from Pull Planning:
-     *
-     * 4. Remove its Lookahead record as well.
-     *
-     * No second manual data entry is required.
-     * ---------------------------------------------------------
-     */
-
     let updatedLookahead = [...data.lookahead];
 
     if (newPullPlanned) {
-      /*
-       * Prevent duplicate Lookahead entries.
-       */
-      const alreadyInLookahead =
-        updatedLookahead.some(
-          (item) =>
-            item.task_id === taskId
+      const weekKey = data.config.current_week_key ?? '2026-W35';
+
+      const existingItem = updatedLookahead.find(
+        (item) =>
+          item.task_id === taskId &&
+          item.week_key === weekKey
+      );
+
+      if (!existingItem) {
+        const totalQuantity = Number(task.total_quantity) || 0;
+        const durationDays = Number(task.duration_days) || 1;
+
+        const dailyQuantity =
+          Number(task.daily_planned_quantity) ||
+          totalQuantity / durationDays;
+
+        const plannedQty =
+          Math.round(dailyQuantity * 7 * 100) / 100;
+
+        const openConstraints = getOpenConstraintCount(
+          taskId,
+          data.constraints
         );
-
-      if (!alreadyInLookahead) {
-        /*
-         * Determine the Lookahead week.
-         *
-         * Prefer the task's must_finish_by date.
-         * Fall back to the current project week.
-         */
-        const taskDate =
-          task.must_finish_by
-            ? new Date(task.must_finish_by)
-            : null;
-
-        let weekKey = currentWeek;
-
-        if (
-          taskDate &&
-          !isNaN(taskDate.getTime())
-        ) {
-          const year =
-            taskDate.getFullYear();
-
-          const startOfYear =
-            new Date(year, 0, 1);
-
-          const dayOfYear =
-            Math.floor(
-              (taskDate.getTime() -
-                startOfYear.getTime()) /
-                86400000
-            ) + 1;
-
-          const weekNumber =
-            Math.ceil(
-              (dayOfYear +
-                startOfYear.getDay()) /
-                7
-            );
-
-          weekKey =
-            `${year}-W${String(
-              weekNumber
-            ).padStart(2, '0')}`;
-        }
-
-        /*
-         * Readiness is determined automatically
-         * from the current constraint state.
-         */
-        const openConstraints =
-          getOpenConstraintCount(
-            taskId,
-            data.constraints
-          );
 
         const newLookaheadItem: LookaheadItem = {
           id: generateId('LKH'),
           task_id: taskId,
           phase_id: task.phase_id ?? null,
-          constraint_ids: data.constraints
-            .filter((c) => c.task_id === task.id)
-            .map((c) => c.id),
+          constraint_ids: [],
           week_key: weekKey,
-          planned_qty: 1,
+          planned_qty: plannedQty,
+          carry_forward_qty: 0,
+          remaining_qty: plannedQty,
           ready: openConstraints === 0,
           notes: ''
         };
 
-        updatedLookahead.push(
-          newLookaheadItem
-        );
+        updatedLookahead.push(newLookaheadItem);
       }
     } else {
-      /*
-       * Removing a task from Pull Planning
-       * also removes it from Lookahead.
-       */
-      updatedLookahead =
-        updatedLookahead.filter(
-          (item) =>
-            item.task_id !== taskId
-        );
+      const weekKey = data.config.current_week_key ?? '2026-W35';
+
+      updatedLookahead = updatedLookahead.filter(
+        (item) =>
+          !(item.task_id === taskId && item.week_key === weekKey)
+      );
     }
 
-    /*
-     * Recalculate readiness after the change.
-     */
-    updatedLookahead =
-      refreshLookaheadReadiness(
-        updatedLookahead,
-        data.constraints
-      );
+    updatedLookahead = refreshLookaheadReadiness(
+      updatedLookahead,
+      data.constraints
+    );
 
-    /*
-     * Save the complete updated workspace.
-     */
     updateData({
       ...data,
       tasks: updatedTasks,
@@ -570,16 +489,35 @@ function AppContent() {
   };
 
   const handleResolveConstraint = (constraintId: string) => {
+    const resolutionDate =
+      new Date().toISOString().split('T')[0];
+
     const updatedConstraints = data.constraints.map((c) =>
-      c.id === constraintId ? { ...c, status: 'Resolved' as const } : c
+      c.id === constraintId
+        ? {
+            ...c,
+            status: 'Resolved' as const,
+            resolved_date: resolutionDate
+          }
+        : c
     );
-    const refreshedLookahead = refreshLookaheadReadiness(data.lookahead, updatedConstraints);
+
+    const refreshedLookahead =
+      refreshLookaheadReadiness(
+        data.lookahead,
+        updatedConstraints
+      );
+
     updateData({
       ...data,
       constraints: updatedConstraints,
       lookahead: refreshedLookahead
     });
-    showToast('Constraint resolved! Task readiness updated.', 'success');
+
+    showToast(
+      `Constraint resolved on ${resolutionDate}. Task is ready from the next working day.`,
+      'success'
+    );
   };
 
   // Lookahead Actions
@@ -736,6 +674,7 @@ function AppContent() {
 
         return {
           ...commitment,
+          actual_qty: cumulativeAchieved,
           progress_percent: progressPercent
         };
       }
@@ -753,30 +692,26 @@ function AppContent() {
     );
   };
 
-  const handleCloseOutWeek = (
-    weekKey: string,
-    finalPpc: number,
-    closeoutDate: string
-  ) => {
-    // Record or update the weekly metrics history
+  const handleCloseOutWeek = (weekKey: string, finalPpc: number) => {
+    const finalMetrics = computeMetrics(weekKey, data);
+
+    const closedRecord = {
+      ...finalMetrics,
+      week_key: weekKey,
+      ppc: finalPpc,
+      status: 'Closed' as const
+    };
+
     const existingIdx = data.metrics.findIndex(
       (m) => m.week_key === weekKey
     );
 
-    const newRecord = {
-      ...metrics,
-      week_key: weekKey,
-      ppc: finalPpc,
-      closed_at: closeoutDate,
-      status: 'Closed' as const
-    };
-
     const updatedMetrics = [...data.metrics];
 
     if (existingIdx >= 0) {
-      updatedMetrics[existingIdx] = newRecord;
+      updatedMetrics[existingIdx] = closedRecord;
     } else {
-      updatedMetrics.push(newRecord);
+      updatedMetrics.push(closedRecord);
     }
 
     updateData({
@@ -1032,6 +967,7 @@ function AppContent() {
           {activeNav === 'plan-pull' && (
             <PullPlanningView
               data={data}
+              currentWeek={data.config.current_week_key}
               onAddTask={handleAddTask}
               onDeleteTask={handleDeleteTask}
               onAddConstraint={handleAddConstraint}
