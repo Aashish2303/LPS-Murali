@@ -41,6 +41,7 @@ interface PullPlanningViewProps {
   onDeleteTask: (taskId: string) => void;
   onAddConstraint: (constraint: Constraint) => void;
   onTogglePullPlanTask: (taskId: string) => void;
+  onTogglePullPlanTasks: (taskIds: string[]) => void;
 }
 
 const getWeekRange = (weekKey: string) => {
@@ -74,7 +75,8 @@ export const PullPlanningView: React.FC<PullPlanningViewProps> = ({
   onAddTask,
   onDeleteTask,
   onAddConstraint,
-  onTogglePullPlanTask
+  onTogglePullPlanTask,
+  onTogglePullPlanTasks
 }) => {
   /*
    * ---------------------------------------------------------
@@ -263,13 +265,7 @@ export const PullPlanningView: React.FC<PullPlanningViewProps> = ({
 
     const ids = Array.from(selectedTaskIds);
 
-    /*
-     * Toggle each selected imported task.
-     * The App-level handler persists pull_planned=true.
-     */
-    ids.forEach((taskId) => {
-      onTogglePullPlanTask(taskId);
-    });
+    onTogglePullPlanTasks(ids);
 
     setSelectedTaskIds(new Set());
   };

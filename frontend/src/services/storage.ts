@@ -985,13 +985,17 @@ export function generateId(
  */
 
 export function currentWeekKey(): string {
-  const now = new Date();
+  return getWeekKeyForDate(new Date());
+}
+
+export function getWeekKeyForDate(date: Date | string): string {
+  const source = typeof date === 'string' ? new Date(`${date}T00:00:00`) : date;
 
   const d = new Date(
     Date.UTC(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate()
+      source.getFullYear(),
+      source.getMonth(),
+      source.getDate()
     )
   );
 
@@ -1028,6 +1032,21 @@ export function currentWeekKey(): string {
   return `${d.getUTCFullYear()}-W${String(
     weekNo
   ).padStart(2, '0')}`;
+}
+
+export function getWeekKeysBetween(
+  startDate: string,
+  endDate: string
+): string[] {
+  const start = getWeekStart(getWeekKeyForDate(startDate));
+  const end = getWeekStart(getWeekKeyForDate(endDate));
+  const weeks: string[] = [];
+
+  for (const cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 7)) {
+    weeks.push(getWeekKeyForDate(cursor));
+  }
+
+  return weeks;
 }
 
 export function getWeekStart(

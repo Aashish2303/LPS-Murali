@@ -55,6 +55,8 @@ export interface Task {
   location: string;
   duration_days: number;
   must_finish_by: string;
+  planned_start?: string;
+  planned_finish?: string;
   uom: string;
   status: 'Planned' | 'In Progress' | 'Complete';
 
@@ -119,12 +121,13 @@ export interface Commitment {
   task_id: string;
   week_key: string;
   committed_by: string;
-  outcome?: 'done' | 'not_done' | 'pending';
+  outcome?: 'done' | 'not_done' | 'pending' | null;
   lookahead_id?: string | null;
   planned_qty?: number;
   actual_qty?: number;
-  reason_code?: number;
+  reason_code?: number | null;
   reason_notes?: string;
+  notes?: string;
   closed_at?: string;
   progress_percent?: number;
 }
@@ -140,6 +143,7 @@ export interface ActualEntry {
 }
 
 export interface MetricRecord {
+  id?: string;
   week_key: string;
   ppc: number | null;
   ta: number;
@@ -148,6 +152,7 @@ export interface MetricRecord {
   total_committed: number;
   total_done: number;
   status?: 'Open' | 'Closed';
+  closeout_date?: string;
 }
 
 export interface CloseoutRecord {

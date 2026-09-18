@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarCheck, ShieldAlert, CheckCircle2, Save, Calendar, Clock } from 'lucide-react';
+import { CalendarCheck, ShieldAlert, CheckCircle2, Save, Calendar, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ActualEntry, LPSData, REASON_CODES } from '../../types';
 import { formatDate, generateId } from '../../services/storage';
 
@@ -16,16 +16,65 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
   onSaveDailyActual,
   onResolveConstraint
 }) => {
-  const getLocalISODate = () => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
+  const getWeekStartDate = (weekKey: string): Date => {
+    const match = weekKey.match(/^(\d{4})-W(\d{2})$/);
 
+    if (!match) return new Date();
+
+    const year = Number(match[1]);
+    const week = Number(match[2]);
+    const jan4 = new Date(year, 0, 4);
+    const day = jan4.getDay() || 7;
+    const monday = new Date(jan4);
+
+    monday.setDate(jan4.getDate() - day + 1 + (week - 1) * 7);
+    monday.setHours(0, 0, 0, 0);
+
+    return monday;
+  };
+
+  const toISODate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   };
 
-  const todayIso = getLocalISODate();
+  const [selectedDate, setSelectedDate] = useState(() =>
+    toISODate(getWeekStartDate(currentWeek))
+  );
+
+  useEffect(() => {
+    setSelectedDate(toISODate(getWeekStartDate(currentWeek)));
+  }, [currentWeek]);
+
+  const weekStart = getWeekStartDate(currentWeek);
+  const selectedDateObject = new Date(`${selectedDate}T00:00:00`);
+  const dayIndex = Math.floor(
+    (selectedDateObject.getTime() - weekStart.getTime()) /
+      86400000
+  );
+  const weekDates = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(weekStart);
+    date.setDate(date.getDate() + index);
+    return {
+      date,
+      iso: toISODate(date),
+      label: date.toLocaleDateString('en-IN', { weekday: 'short' }),
+      shortDate: date.toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short'
+      })
+    };
+  });
+  const weekDays = weekDates.map((day) => day.iso);
+
+  const changeDay = (offset: number) => {
+    const nextIndex = Math.min(6, Math.max(0, dayIndex + offset));
+    const nextDate = new Date(weekStart);
+    nextDate.setDate(weekStart.getDate() + nextIndex);
+    setSelectedDate(toISODate(nextDate));
+  };
 
   const pendingCommitments = useMemo(() => {
     return data.commitments
@@ -42,7 +91,7 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
         const existingActual = data.actuals.find(
           (a) =>
             a.commitment_id === commitment.id &&
-            a.day_date === todayIso
+            a.day_date === selectedDate
         );
 
         const matchingLookaheadItems = data.lookahead.filter(
@@ -80,7 +129,7 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
     data.actuals,
     data.lookahead,
     currentWeek,
-    todayIso
+    selectedDate
   ]);
 
   type RowState = {
@@ -171,13 +220,13 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
     const existingActual = data.actuals.find(
       (a) =>
         a.commitment_id === commitmentId &&
-        a.day_date === todayIso
+        a.day_date === selectedDate
     );
 
     const actual: ActualEntry = {
       id: existingActual?.id || generateId('ACT'),
       commitment_id: commitmentId,
-      day_date: todayIso,
+      day_date: selectedDate,
       planned_qty: Math.max(0, planned),
       achieved_qty: Math.max(0, achieved),
       note: row.note?.trim() || '',
@@ -203,9 +252,15 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
       return { ...c, taskName: task?.description || c.task_id };
     });
 
+  const weeklyPlanned = data.actuals
+    .filter((actual) => weekDays.includes(actual.day_date))
+    .reduce((total, actual) => total + Number(actual.planned_qty || 0), 0);
+  const weeklyAchieved = data.actuals
+    .filter((actual) => weekDays.includes(actual.day_date))
+    .reduce((total, actual) => total + Number(actual.achieved_qty || 0), 0);
   return (
     <div id="daily-checkin-view" className="space-y-8 max-w-6xl mx-auto pb-12 animate-fade-in">
-      {/* Top Banner with Today's Date */}
+      {/* Top Banner with simulated teaching date */}
       <div className="p-6 rounded-lg bg-[#1e293b] border border-[#334155] flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-md">
         <div>
           <div className="flex items-center gap-2">
@@ -219,12 +274,53 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
 
         <div className="flex items-center gap-3">
           <div className="px-4 py-2 rounded-lg bg-[#0f172a] border border-[#334155] text-right">
-            <div className="text-[10px] uppercase font-bold text-[#94a3b8] tracking-wider">Site Date</div>
+            <div className="text-[10px] uppercase font-bold text-[#94a3b8] tracking-wider">Simulation Date</div>
             <div className="text-sm font-extrabold text-[#f59e0b] flex items-center gap-1.5 mt-0.5">
               <Calendar className="w-3.5 h-3.5" />
-              <span>{formatDate(todayIso)}</span>
+              <span>{formatDate(selectedDate)}</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="p-5 rounded-lg bg-[#1e293b] border border-[#334155] shadow-lg space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <button type="button" onClick={() => changeDay(-1)} disabled={dayIndex === 0} className="px-3 py-2 rounded-lg border border-[#334155] text-xs font-bold text-[#cbd5e1] disabled:opacity-40 flex items-center gap-1">
+            <ChevronLeft className="w-4 h-4" /> Previous
+          </button>
+          <div className="text-center">
+            <div className="text-[10px] uppercase font-bold tracking-wider text-[#94a3b8]">Daily Production Simulation</div>
+            <div className="text-base font-extrabold text-[#f8fafc]">{currentWeek}</div>
+            <div className="text-xs font-bold text-[#38bdf8]">{selectedDateObject.toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' })}</div>
+          </div>
+          <button type="button" onClick={() => changeDay(1)} disabled={dayIndex === 6} className="px-3 py-2 rounded-lg border border-[#334155] text-xs font-bold text-[#cbd5e1] disabled:opacity-40 flex items-center gap-1">
+            Next <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="grid grid-cols-7 gap-1.5">
+          {weekDates.map((day) => {
+            const hasActual = data.actuals.some(
+              (actual) =>
+                actual.day_date === day.iso &&
+                data.commitments.some(
+                  (commitment) =>
+                    commitment.id === actual.commitment_id &&
+                    commitment.week_key === currentWeek
+                )
+            );
+
+            return (
+            <button key={day.iso} type="button" onClick={() => setSelectedDate(day.iso)} className={`p-2 rounded-md border text-center ${day.iso === selectedDate ? 'border-[#f59e0b] bg-amber-500/10 text-[#f59e0b]' : 'border-[#334155] text-[#94a3b8]'}`}>
+              <div className="text-[10px] font-bold">{day.label}</div>
+              <div className="text-[10px] mt-1">{day.shortDate}</div>
+              {hasActual && <div className="text-[10px] mt-1 font-bold">✓ Recorded</div>}
+            </button>
+            );
+          })}
+        </div>
+        <div className="flex flex-wrap gap-3 text-xs text-[#cbd5e1]">
+          <span>Weekly planned: <strong className="text-[#38bdf8]">{weeklyPlanned.toFixed(2)}</strong></span>
+          <span>Weekly achieved: <strong className="text-[#10b981]">{weeklyAchieved.toFixed(2)}</strong></span>
         </div>
       </div>
 

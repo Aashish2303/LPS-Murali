@@ -9,7 +9,7 @@ import {
   Clock
 } from 'lucide-react';
 import { Commitment, LPSData, Task } from '../../types';
-import { generateId, getOpenConstraintCount } from '../../services/storage';
+import { generateId } from '../../services/storage';
 
 interface MakeCommitmentsViewProps {
   data: LPSData;
@@ -154,18 +154,14 @@ export const MakeCommitmentsView: React.FC<MakeCommitmentsViewProps> = ({
    * IMPORTANT:
    * The week is automatically tied to currentWeek.
    */
-  const readyLookaheadTasks = data.lookahead
-    .filter((l) => {
-      const openCount = getOpenConstraintCount(
-        l.task_id,
-        data.constraints
-      );
-
-      return (
-        openCount === 0 &&
-        !committedTaskIds.has(l.task_id)
-      );
-    })
+  const readyItems = data.lookahead
+    .filter(
+      (item) =>
+        item.week_key === currentWeek &&
+        item.ready === true &&
+        (item.remaining_qty ?? item.planned_qty) > 0 &&
+        !committedTaskIds.has(item.task_id)
+    )
     .map((l) => {
       const task = data.tasks.find(
         (t) => t.id === l.task_id
@@ -234,27 +230,25 @@ export const MakeCommitmentsView: React.FC<MakeCommitmentsViewProps> = ({
   const handleConfirmCommit = (taskId: string) => {
     if (!committedByName.trim()) return;
 
-    const selectedLookahead = readyLookaheadTasks.find(
+    const selectedLookahead = readyItems.find(
       ({ task }) => task.id === taskId
     )?.lookahead;
 
     const newCommitment: Commitment = {
       id: generateId('COM'),
       task_id: taskId,
-
-      // AUTOMATICALLY USE ACTIVE WEEK
-      week_key: currentWeek,
-
-      committed_by: committedByName.trim(),
-      outcome: 'pending',
       lookahead_id: selectedLookahead?.id ?? null,
-
-      // Progress is calculated from actual quantities.
+      week_key: currentWeek,
+      committed_by: committedByName.trim(),
+      planned_qty:
+        selectedLookahead?.remaining_qty ??
+        selectedLookahead?.planned_qty ??
+        0,
+      actual_qty: 0,
       progress_percent: 0,
-      planned_qty: Number(
-        selectedLookahead?.planned_qty ?? 0
-      ),
-      actual_qty: 0
+      outcome: null,
+      reason_code: null,
+      notes: ''
     };
 
     onAddCommitment(newCommitment);
@@ -338,7 +332,7 @@ export const MakeCommitmentsView: React.FC<MakeCommitmentsViewProps> = ({
 
             <span>
               Available Ready Tasks Eligible for Commitment (
-              {readyLookaheadTasks.length}
+              {readyItems.length}
               )
             </span>
           </h3>
@@ -348,7 +342,7 @@ export const MakeCommitmentsView: React.FC<MakeCommitmentsViewProps> = ({
           </span>
         </div>
 
-        {readyLookaheadTasks.length === 0 ? (
+        {readyItems.length === 0 ? (
           <div className="p-8 text-center bg-[#1e293b] border border-dashed border-[#334155] rounded-lg text-[#94a3b8]">
             <p className="text-xs font-semibold text-[#f8fafc]">
               No additional ready tasks to commit.
@@ -362,7 +356,7 @@ export const MakeCommitmentsView: React.FC<MakeCommitmentsViewProps> = ({
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {readyLookaheadTasks.map(
+            {readyItems.map(
               ({ task, lookahead }) => {
                 const isCommittingThis =
                   committingTaskId === task.id;

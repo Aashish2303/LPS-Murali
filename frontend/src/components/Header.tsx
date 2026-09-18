@@ -118,6 +118,13 @@ export const Header: React.FC<HeaderProps> = ({
   const meta = getNavMeta(currentNav);
   const projectName = config.projectName || config.project_name || 'Chittor Site — Block B';
 
+  const formatWeekLabel = (weekKey: string, index: number) => {
+    const match = weekKey.match(/^(\d{4})-W(\d{2})$/);
+    if (!match) return weekKey;
+
+    return `Week ${index + 1}`;
+  };
+
   const uniqueWeeks = React.useMemo(() => {
     const list = availableWeeks.filter((w): w is string => typeof w === 'string' && w.trim().length > 0);
     return Array.from(new Set(list));
@@ -175,7 +182,7 @@ export const Header: React.FC<HeaderProps> = ({
             >
               {uniqueWeeks.map((wk, idx) => (
                 <option key={`week-opt-${wk}-${idx}`} value={wk} className="bg-slate-900 text-slate-200">
-                  Wk {wk}
+                  {formatWeekLabel(wk, idx)}
                 </option>
               ))}
             </select>
@@ -186,7 +193,7 @@ export const Header: React.FC<HeaderProps> = ({
             id="header-week-badge"
             className="px-3 py-1 bg-slate-800 border border-slate-700 rounded-full text-xs font-mono text-slate-300 shadow-sm"
           >
-            Wk {currentWeek}
+            Week {uniqueWeeks.indexOf(currentWeek) + 1}
           </div>
         )}
 
