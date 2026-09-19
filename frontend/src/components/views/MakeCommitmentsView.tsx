@@ -9,7 +9,7 @@ import {
   Clock
 } from 'lucide-react';
 import { Commitment, LPSData, Task } from '../../types';
-import { generateId } from '../../services/storage';
+import { formatDate, generateId } from '../../services/storage';
 
 interface MakeCommitmentsViewProps {
   data: LPSData;
@@ -26,6 +26,17 @@ export const MakeCommitmentsView: React.FC<MakeCommitmentsViewProps> = ({
 }) => {
   const [committingTaskId, setCommittingTaskId] = useState<string | null>(null);
   const [committedByName, setCommittedByName] = useState('');
+  const [commitTab, setCommitTab] = useState<'details' | 'handoffs'>('details');
+  const [handoffs, setHandoffs] = useState<string[]>([]);
+  const [customHandoff, setCustomHandoff] = useState('');
+
+  const handoffOptions = [
+    'Drawing released',
+    'Material available',
+    'Previous trade completed',
+    'Area handed over',
+    'Inspection completed'
+  ];
 
   /*
    * ============================================================
@@ -154,11 +165,14 @@ export const MakeCommitmentsView: React.FC<MakeCommitmentsViewProps> = ({
    * IMPORTANT:
    * The week is automatically tied to currentWeek.
    */
-  const readyItems = data.lookahead
+  const currentWeekItems = data.lookahead.filter(
+    (item) => item.week_key === currentWeek
+  );
+
+  const availableForCommitment = currentWeekItems
+    .filter((item) => item.ready)
     .filter(
       (item) =>
-        item.week_key === currentWeek &&
-        item.ready === true &&
         (item.remaining_qty ?? item.planned_qty) > 0 &&
         !committedTaskIds.has(item.task_id)
     )
@@ -225,14 +239,29 @@ export const MakeCommitmentsView: React.FC<MakeCommitmentsViewProps> = ({
     setCommittedByName(
       task.responsible || 'Trade Foreman'
     );
+    setCommitTab('details');
+    setHandoffs([]);
+    setCustomHandoff('');
   };
 
   const handleConfirmCommit = (taskId: string) => {
     if (!committedByName.trim()) return;
 
-    const selectedLookahead = readyItems.find(
+    const selectedLookahead = availableForCommitment.find(
       ({ task }) => task.id === taskId
     )?.lookahead;
+
+    if (!selectedLookahead) return;
+
+    const alreadyCommitted = data.commitments.some(
+      (commitment) =>
+        commitment.task_id === selectedLookahead.task_id &&
+        commitment.week_key === currentWeek
+    );
+
+    if (alreadyCommitted) {
+      return;
+    }
 
     const newCommitment: Commitment = {
       id: generateId('COM'),
@@ -248,7 +277,8 @@ export const MakeCommitmentsView: React.FC<MakeCommitmentsViewProps> = ({
       progress_percent: 0,
       outcome: null,
       reason_code: null,
-      notes: ''
+      notes: '',
+      handoffs
     };
 
     onAddCommitment(newCommitment);
@@ -332,7 +362,7 @@ export const MakeCommitmentsView: React.FC<MakeCommitmentsViewProps> = ({
 
             <span>
               Available Ready Tasks Eligible for Commitment (
-              {readyItems.length}
+              {availableForCommitment.length}
               )
             </span>
           </h3>
@@ -342,7 +372,7 @@ export const MakeCommitmentsView: React.FC<MakeCommitmentsViewProps> = ({
           </span>
         </div>
 
-        {readyItems.length === 0 ? (
+        {availableForCommitment.length === 0 ? (
           <div className="p-8 text-center bg-[#1e293b] border border-dashed border-[#334155] rounded-lg text-[#94a3b8]">
             <p className="text-xs font-semibold text-[#f8fafc]">
               No additional ready tasks to commit.
@@ -356,15 +386,25 @@ export const MakeCommitmentsView: React.FC<MakeCommitmentsViewProps> = ({
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {readyItems.map(
+            {availableForCommitment.map(
               ({ task, lookahead }) => {
                 const isCommittingThis =
                   committingTaskId === task.id;
+                const openConstraints = data.constraints.filter(
+                  (constraint) =>
+                    constraint.task_id === task.id &&
+                    constraint.status !== 'Resolved'
+                );
+                const isReady = openConstraints.length === 0;
 
                 return (
                   <div
                     key={task.id}
-                    className="p-5 rounded-lg bg-[#1e293b] border border-emerald-500/30 hover:border-emerald-500/60 transition-all shadow-md flex flex-col justify-between"
+                    className={`p-5 rounded-lg bg-[#1e293b] transition-all shadow-md flex flex-col justify-between ${
+                      isReady
+                        ? 'border border-emerald-500/30 hover:border-emerald-500/60'
+                        : 'border border-amber-500/40 hover:border-amber-500/60'
+                    }`}
                   >
                     <div>
                       <div className="flex items-center justify-between gap-2 mb-2">
@@ -372,8 +412,12 @@ export const MakeCommitmentsView: React.FC<MakeCommitmentsViewProps> = ({
                           {task.trade}
                         </span>
 
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-[#10b981] border border-emerald-500/30">
-                          Ready
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                          isReady
+                            ? 'bg-emerald-500/20 text-[#10b981] border-emerald-500/30'
+                            : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                        }`}>
+                          {isReady ? 'Ready' : `${openConstraints.length} Open Constraints`}
                         </span>
                       </div>
 
@@ -407,6 +451,13 @@ export const MakeCommitmentsView: React.FC<MakeCommitmentsViewProps> = ({
                             {currentWeek}
                           </strong>
                         </div>
+
+                        {!isReady && (
+                          <div className="text-xs text-amber-400 mt-2">
+                            {openConstraints.length} open constraint
+                            {openConstraints.length > 1 ? 's' : ''} — resolve before committing
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -417,6 +468,27 @@ export const MakeCommitmentsView: React.FC<MakeCommitmentsViewProps> = ({
                     <div className="pt-3 border-t border-[#334155]">
                       {isCommittingThis ? (
                         <div className="space-y-2 bg-[#0f172a] p-3 rounded-lg border border-amber-500/30">
+                          <div className="flex gap-2 border-b border-[#334155] pb-2">
+                            <button type="button" onClick={() => setCommitTab('details')} className={`text-[11px] font-bold ${commitTab === 'details' ? 'text-[#f59e0b]' : 'text-[#94a3b8]'}`}>Details</button>
+                            <button type="button" onClick={() => setCommitTab('handoffs')} className={`text-[11px] font-bold ${commitTab === 'handoffs' ? 'text-[#f59e0b]' : 'text-[#94a3b8]'}`}>Handoffs</button>
+                          </div>
+
+                          {commitTab === 'handoffs' ? (
+                            <div className="space-y-2">
+                              <div className="text-[11px] font-semibold text-[#f59e0b]">Required Handoffs</div>
+                              {handoffOptions.map((handoff) => (
+                                <label key={handoff} className="flex items-center gap-2 text-[11px] text-[#cbd5e1]">
+                                  <input type="checkbox" checked={handoffs.includes(handoff)} onChange={(event) => setHandoffs((current) => event.target.checked ? [...current, handoff] : current.filter((item) => item !== handoff))} />
+                                  {handoff}
+                                </label>
+                              ))}
+                              <div className="flex gap-2">
+                                <input type="text" value={customHandoff} onChange={(event) => setCustomHandoff(event.target.value)} placeholder="Add handoff" className="min-w-0 flex-1 px-2 py-1 bg-[#1e293b] border border-[#334155] rounded text-xs text-[#f8fafc]" />
+                                <button type="button" onClick={() => { if (customHandoff.trim()) { setHandoffs((current) => [...current, customHandoff.trim()]); setCustomHandoff(''); } }} className="text-xs font-bold text-[#f59e0b]">+ Add</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
                           <label className="block text-[11px] font-semibold text-[#f59e0b]">
                             Committer Name (Last Planner):
                           </label>
@@ -433,6 +505,8 @@ export const MakeCommitmentsView: React.FC<MakeCommitmentsViewProps> = ({
                             placeholder="e.g. Gopal Krishna (Rebar Lead)"
                             className="w-full px-2.5 py-1.5 bg-[#1e293b] border border-[#334155] rounded text-xs text-[#f8fafc] focus:border-[#f59e0b] focus:outline-none"
                           />
+                            </>
+                          )}
 
                           <div className="flex gap-2 justify-end pt-1">
                             <button
@@ -461,15 +535,21 @@ export const MakeCommitmentsView: React.FC<MakeCommitmentsViewProps> = ({
                       ) : (
                         <button
                           id={`btn-commit-task-${task.id}`}
+                          type="button"
+                          disabled={!isReady}
                           onClick={() =>
                             handleStartCommit(task)
                           }
-                          className="w-full py-2 bg-[#10b981]/20 hover:bg-[#10b981] hover:text-[#0f172a] text-[#10b981] border border-[#10b981]/40 font-bold text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                          className={`w-full py-2 font-bold text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                            isReady
+                              ? 'bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500 cursor-pointer'
+                              : 'bg-gray-700 text-gray-400 border border-gray-600 cursor-not-allowed'
+                          }`}
                         >
-                          <Plus className="w-3.5 h-3.5" />
+                          {isReady && <Plus className="w-3.5 h-3.5" />}
 
                           <span>
-                            + Commit This Task
+                            {isReady ? '+ Commit This Task' : 'Blocked'}
                           </span>
                         </button>
                       )}
@@ -625,6 +705,13 @@ export const MakeCommitmentsView: React.FC<MakeCommitmentsViewProps> = ({
                         <div>
                           Duration:{' '}
                           {task.duration_days} days
+                        </div>
+
+                        <div>
+                          Target Finish:{' '}
+                          <strong className="text-[#f8fafc]">
+                            {formatDate(task.epf || task.must_finish_by || task.lpf)}
+                          </strong>
                         </div>
                       </div>
 

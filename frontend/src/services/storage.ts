@@ -209,6 +209,8 @@ export interface PhaseScheduleImportRow {
   float: number | null;
 
   quantity: number;
+  durationDays: number;
+  uom: string;
 }
 
 function normalizeHeader(value: unknown): string {
@@ -345,8 +347,7 @@ export async function parsePhaseScheduleFile(
     'epf',
     'lps',
     'lpf',
-    'float',
-    'quantity'
+    'float'
   ];
 
   const missingHeaders =
@@ -487,6 +488,24 @@ export async function parsePhaseScheduleFile(
       );
     }
 
+    const rawDuration = getValue(row, 'duration');
+    const calculatedDuration = Math.max(
+      1,
+      Math.ceil(
+        (new Date(plannedFinish).getTime() -
+          new Date(plannedStart).getTime()) /
+          86400000
+      )
+    );
+    const durationDays =
+      rawDuration === '' || rawDuration === null || rawDuration === undefined
+        ? calculatedDuration
+        : Number(rawDuration);
+
+    if (!Number.isFinite(durationDays) || durationDays <= 0) {
+      throw new Error(`Task "${name}" has an invalid duration.`);
+    }
+
     parsedRows.push({
       slNo,
       name,
@@ -502,7 +521,9 @@ export async function parsePhaseScheduleFile(
       lpf,
       float,
 
-      quantity: quantityValue
+      quantity: quantityValue,
+      durationDays,
+      uom: String(getValue(row, 'unit') ?? '').trim()
     });
   });
 
@@ -574,7 +595,11 @@ export async function importPhaseSchedule(
     );
   }
 
-  return result;
+  return result as {
+    success: boolean;
+    tasks: Task[];
+    count: number;
+  };
 }
 
 /*
@@ -1042,95 +1067,43 @@ export function getWeekKeysBetween(
   const end = getWeekStart(getWeekKeyForDate(endDate));
   const weeks: string[] = [];
 
-  for (const cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 7)) {
+  if (!start || !end) return weeks;
+
+  for (const cursor = new Date(`${start}T00:00:00`); cursor <= new Date(`${end}T00:00:00`); cursor.setDate(cursor.getDate() + 7)) {
     weeks.push(getWeekKeyForDate(cursor));
   }
 
   return weeks;
 }
 
-export function getWeekStart(
-  weekKey: string
-): Date {
-  try {
-    const parts =
-      weekKey.split('-W');
+export function getWeekStart(weekKey: string): string {
+  const match = weekKey.match(/^(\d{4})-W(\d{2})$/);
 
-    if (parts.length !== 2) {
-      return new Date();
-    }
+  if (!match) return '';
 
-    const year =
-      parseInt(parts[0], 10);
+  const year = Number(match[1]);
+  const week = Number(match[2]);
 
-    const week =
-      parseInt(parts[1], 10);
+  const jan4 = new Date(year, 0, 4);
+  const day = jan4.getDay() || 7;
 
-    const simple =
-      new Date(
-        year,
-        0,
-        1 +
-          (week - 1) * 7
-      );
+  const monday = new Date(jan4);
+  monday.setDate(
+    jan4.getDate() - day + 1 + (week - 1) * 7
+  );
 
-    const dow =
-      simple.getDay();
-
-    const isoWeekStart =
-      simple;
-
-    if (dow <= 4) {
-      isoWeekStart.setDate(
-        simple.getDate() -
-          simple.getDay() +
-          1
-      );
-    } else {
-      isoWeekStart.setDate(
-        simple.getDate() +
-          8 -
-          simple.getDay()
-      );
-    }
-
-    isoWeekStart.setHours(
-      0,
-      0,
-      0,
-      0
-    );
-
-    return isoWeekStart;
-
-  } catch {
-    return new Date();
-  }
+  return monday.toISOString().split('T')[0];
 }
 
-export function getWeekEnd(
-  weekKey: string
-): Date {
-  const start =
-    getWeekStart(
-      weekKey
-    );
+export function getWeekEnd(weekKey: string): string {
+  const start = getWeekStart(weekKey);
 
-  const end =
-    new Date(start);
+  if (!start) return '';
 
-  end.setDate(
-    start.getDate() + 6
-  );
+  const end = new Date(`${start}T00:00:00`);
+  end.setDate(end.getDate() + 7);
 
-  end.setHours(
-    23,
-    59,
-    59,
-    999
-  );
-
-  return end;
+  return end.toISOString().split('T')[0];
 }
 
 /*
@@ -1265,21 +1238,58 @@ export function computeMetrics(
     comms.length;
 
   const totalDone =
-    comms.filter(
-      (c) =>
-        c.outcome ===
-        'done'
-    ).length;
+    comms.filter((commitment) => {
+      const plannedQty = Number(commitment.planned_qty) || 0;
+
+      const actualQty = data.actuals
+        .filter(
+          (actual) =>
+            actual.commitment_id === commitment.id &&
+            actual.day_date >= getWeekStart(weekKey) &&
+            actual.day_date < getWeekEnd(weekKey)
+        )
+        .reduce(
+          (sum, actual) =>
+            sum + (Number(actual.achieved_qty) || 0),
+          0
+        );
+
+      return actualQty >= plannedQty;
+    });
 
   const ppc =
     totalCommitted > 0
       ? Math.round(
           (
-            totalDone /
+            totalDone.length /
             totalCommitted
           ) * 100
         )
-      : null;
+      : 0;
+
+  const plannedQty = comms.reduce(
+    (sum, commitment) =>
+      sum + (Number(commitment.planned_qty) || 0),
+    0
+  );
+
+  const actualQty = comms.reduce(
+    (sum, commitment) =>
+      sum +
+      data.actuals
+        .filter(
+          (actual) =>
+            actual.commitment_id === commitment.id &&
+            actual.day_date >= getWeekStart(weekKey) &&
+            actual.day_date < getWeekEnd(weekKey)
+        )
+        .reduce(
+          (total, actual) =>
+            total + (Number(actual.achieved_qty) || 0),
+          0
+        ),
+    0
+  );
 
   /*
    * TA
@@ -1323,14 +1333,9 @@ export function computeMetrics(
           return false;
         }
 
-        const d =
-          new Date(
-            c.raised_date
-          );
-
         return (
-          d >= weekStart &&
-          d <= weekEnd
+          c.raised_date >= weekStart &&
+          c.raised_date < weekEnd
         );
       }
     );
@@ -1368,7 +1373,9 @@ export function computeMetrics(
     total_committed:
       totalCommitted,
     total_done:
-      totalDone,
+      totalDone.length,
+    planned_qty: plannedQty,
+    actual_qty: actualQty,
     status:
       existingRecord?.status ||
       'Open'

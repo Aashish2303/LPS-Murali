@@ -621,7 +621,10 @@ app.post(
                   null,
                 reason_notes:
                   item.reason_notes ??
-                  null
+                  null,
+                handoffs:
+                  item.handoffs ??
+                  []
               })
             );
 
@@ -983,22 +986,18 @@ app.post(
         const finishDate =
           new Date(row.plannedFinish);
 
-        const durationDays =
-          Math.max(
-            1,
-            Math.ceil(
-              (
-                finishDate.getTime() -
-                startDate.getTime()
-              ) /
-                (1000 * 60 * 60 * 24)
-            )
-          );
+        const durationDays = Number(row.durationDays) || Math.max(
+          1,
+          Math.ceil(
+            (finishDate.getTime() - startDate.getTime()) /
+              (1000 * 60 * 60 * 24)
+          )
+        );
 
         return {
           id: taskId,
           project_id: projectId,
-          uom: 'nos',
+          uom: row.uom || '—',
           trade: 'Phase Schedule',
           status: 'Planned',
           pull_planned: false,

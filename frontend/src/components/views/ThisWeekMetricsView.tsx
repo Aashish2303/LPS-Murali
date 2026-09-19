@@ -23,8 +23,7 @@ export const ThisWeekMetricsView: React.FC<ThisWeekMetricsViewProps> = ({
   const weekEnd = getWeekEnd(currentWeek);
   const constraintsRaisedThisWeek = data.constraints.filter((c) => {
     if (!c.raised_date) return false;
-    const d = new Date(c.raised_date);
-    return d >= weekStart && d <= weekEnd;
+    return c.raised_date >= weekStart && c.raised_date < weekEnd;
   }).length;
 
   const renderDonut = (value: number | null, label: string, color: 'emerald' | 'amber' | 'red' | 'sky') => {

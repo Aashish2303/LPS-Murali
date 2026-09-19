@@ -128,6 +128,7 @@ export interface Commitment {
   reason_code?: number | null;
   reason_notes?: string;
   notes?: string;
+  handoffs?: string[];
   closed_at?: string;
   progress_percent?: number;
 }
@@ -151,6 +152,8 @@ export interface MetricRecord {
   crr: number | null;
   total_committed: number;
   total_done: number;
+  planned_qty?: number;
+  actual_qty?: number;
   status?: 'Open' | 'Closed';
   closeout_date?: string;
 }

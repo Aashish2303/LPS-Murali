@@ -1062,6 +1062,8 @@ export const PhaseScheduleView: React.FC<
                   <th className="px-4 py-3">LPS</th>
                   <th className="px-4 py-3">LPF</th>
                   <th className="px-4 py-3">Float</th>
+                  <th className="px-4 py-3">Duration</th>
+                  <th className="px-4 py-3">UOM</th>
                   <th className="px-4 py-3">Quantity</th>
                   <th className="px-4 py-3">Daily Plan</th>
                 </tr>
@@ -1105,6 +1107,14 @@ export const PhaseScheduleView: React.FC<
 
                     <td className="px-4 py-3 font-semibold text-[#f59e0b]">
                       {task.float ?? '—'}
+                    </td>
+
+                    <td className="px-4 py-3 font-semibold text-[#cbd5e1]">
+                      {task.duration_days || '—'} days
+                    </td>
+
+                    <td className="px-4 py-3 text-[#cbd5e1]">
+                      {task.uom || '—'}
                     </td>
 
                     <td className="px-4 py-3 font-bold text-[#f8fafc]">

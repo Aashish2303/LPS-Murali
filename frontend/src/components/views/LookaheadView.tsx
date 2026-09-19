@@ -13,13 +13,16 @@ import {
 
 import {
   LPSData,
-  LookaheadItem
+  LookaheadItem,
+  Constraint
 } from '../../types';
 
 import {
   computeFloat,
   formatDate,
-  getOpenConstraintCount
+  getOpenConstraintCount,
+  getWeekKeyForDate,
+  generateId
 } from '../../services/storage';
 
 const getWeekStart = (weekKey: string) => {
@@ -60,6 +63,7 @@ interface LookaheadViewProps {
   currentWeek: string;
   onAddToLookahead: (item: LookaheadItem) => void;
   onRefreshReadiness: () => void;
+  onAddConstraint: (constraint: Constraint) => void;
   onResolveConstraint: (constraintId: string) => void;
   onNavigateToCommit: () => void;
 }
@@ -69,6 +73,7 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
   currentWeek,
   onAddToLookahead,
   onRefreshReadiness,
+  onAddConstraint,
   onResolveConstraint,
   onNavigateToCommit
 }) => {
@@ -96,29 +101,27 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
 
   const current = getWeekOffset(currentWeek);
 
-  const isWithinLookaheadHorizon = (
-    weekKey: string
-  ) => {
-    if (!current) return false;
-
-    const target = getWeekOffset(weekKey);
-
-    if (!target) return false;
-
-    const currentIndex =
-      current.year * 52 + current.week;
-
-    const targetIndex =
-      target.year * 52 + target.week;
-
-    const difference =
-      targetIndex - currentIndex;
-
-    return (
-      difference >= 0 &&
-      difference < lookaheadWeeks
-    );
+  const getWeekDifference = (baseWeek: string, weekKey: string) => {
+    const baseDate = getWeekStart(baseWeek);
+    const targetDate = getWeekStart(weekKey);
+    if (!baseDate || !targetDate) return null;
+    return Math.round((targetDate.getTime() - baseDate.getTime()) / 604800000);
   };
+
+  const availableWeeks = Array.from(new Set([
+    ...data.lookahead.map((item) => item.week_key),
+    ...Array.from({ length: 5 }, (_, offset) => {
+      const date = getWeekStart(currentWeek);
+      if (!date) return '';
+      date.setDate(date.getDate() + offset * 7);
+      return getWeekKeyForDate(date);
+    })
+  ])).filter(Boolean);
+
+  const visibleWeeks = availableWeeks.filter((week) => {
+    const offset = getWeekDifference(currentWeek, week);
+    return offset !== null && offset >= 0 && offset < lookaheadWeeks;
+  });
 
   const phaseScheduleTasks = data.tasks.filter(
     (task) =>
@@ -151,33 +154,18 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
       Number(task.daily_planned_quantity) ||
       totalQuantity / durationDays;
 
-    for (let offset = 0; offset < lookaheadWeeks; offset++) {
-      if (!current) continue;
-
-      const weekNumber = current.week + offset;
-
-      let year = current.year;
-      let normalizedWeek = weekNumber;
-
-      if (normalizedWeek > 52) {
-        year += Math.floor((normalizedWeek - 1) / 52);
-        normalizedWeek =
-          ((normalizedWeek - 1) % 52) + 1;
-      }
-
-      const weekKey =
-        `${year}-W${String(normalizedWeek).padStart(2, '0')}`;
+    visibleWeeks.forEach((weekKey) => {
 
       const weekStart = getWeekStart(weekKey);
       const weekEnd = getWeekEnd(weekKey);
 
-      if (!weekStart || !weekEnd) continue;
+      if (!weekStart || !weekEnd) return;
 
       const overlapsWeek =
         taskStart <= weekEnd &&
         taskFinish >= weekStart;
 
-      if (!overlapsWeek) continue;
+      if (!overlapsWeek) return;
 
       const effectiveStart =
         taskStart > weekStart
@@ -248,11 +236,29 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
         notes:
           existingItem?.notes ?? ''
       });
-    }
+    });
   });
 
-  const lookaheadItems =
-    generatedLookaheadItems;
+  const lookaheadItems = generatedLookaheadItems.filter((item) =>
+    visibleWeeks.includes(item.week_key)
+  );
+
+  const handleAddLookaheadConstraint = (taskId: string) => {
+    const description = window.prompt('Constraint description');
+    if (!description?.trim()) return;
+
+    onAddConstraint({
+      id: generateId('CON'),
+      task_id: taskId,
+      type: 'Materials',
+      description: description.trim(),
+      raised_by: 'Lookahead Planner',
+      responsible: 'Site Team',
+      raised_date: new Date().toISOString().split('T')[0],
+      target_date: new Date().toISOString().split('T')[0],
+      status: 'Open'
+    });
+  };
 
   const totalTasks = lookaheadItems.length;
 
@@ -583,6 +589,13 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
 
                     </div>
 
+                    <div className="grid grid-cols-2 gap-2 text-[11px] text-[#94a3b8]">
+                      <div>Quantity: <strong className="text-[#f8fafc]">{item.planned_qty}</strong></div>
+                      <div>UOM: <strong className="text-[#f8fafc]">{task.uom || '—'}</strong></div>
+                      <div>Target Finish: <strong className="text-[#f8fafc]">{formatDate(task.epf || task.must_finish_by || task.lpf)}</strong></div>
+                      <div>Status: <strong className="text-[#ef4444]">Not Ready</strong></div>
+                    </div>
+
                     {item.notes && (
                       <div className="text-[11px] text-[#64748b] bg-slate-900/80 p-2 rounded border border-slate-800">
                         {item.notes}
@@ -627,6 +640,14 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
 
                         </div>
                       ))}
+
+                      <button
+                        type="button"
+                        onClick={() => handleAddLookaheadConstraint(task.id)}
+                        className="text-left text-[11px] font-bold text-[#f59e0b] hover:text-[#f8fafc]"
+                      >
+                        + Add Constraint
+                      </button>
 
                     </div>
 
@@ -735,6 +756,25 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
                         Float: {floatVal}d
                       </span>
 
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-[11px] text-[#94a3b8]">
+                      <div>Quantity: <strong className="text-[#f8fafc]">{item.planned_qty}</strong></div>
+                      <div>UOM: <strong className="text-[#f8fafc]">{task.uom || '—'}</strong></div>
+                      <div>Target Finish: <strong className="text-[#f8fafc]">{formatDate(task.epf || task.must_finish_by || task.lpf)}</strong></div>
+                      <div>Status: <strong className="text-[#10b981]">Ready</strong></div>
+                    </div>
+
+                    <div className="border-t border-[#334155]/60 pt-2 text-[11px] text-[#94a3b8]">
+                      <div className="font-bold uppercase tracking-wider text-[#10b981]">Constraints</div>
+                      <div className="mt-1">Material · Drawing · Manpower · Access</div>
+                      <button
+                        type="button"
+                        onClick={() => handleAddLookaheadConstraint(task.id)}
+                        className="mt-2 text-left font-bold text-[#f59e0b] hover:text-[#f8fafc]"
+                      >
+                        + Add Constraint
+                      </button>
                     </div>
 
                     <div className="flex items-center justify-between text-[11px] text-[#94a3b8] pt-1">

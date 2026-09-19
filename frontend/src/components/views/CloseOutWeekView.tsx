@@ -11,7 +11,7 @@ import {
   Calendar
 } from 'lucide-react';
 import { LPSData, REASON_CODES } from '../../types';
-import { computeMetrics, getCoachingDiagnosis } from '../../services/storage';
+import { computeMetrics, formatDate, getCoachingDiagnosis, getWeekEnd, getWeekStart } from '../../services/storage';
 
 interface CloseOutWeekViewProps {
   data: LPSData;
@@ -34,9 +34,10 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
 }) => {
   const [showRevealModal, setShowRevealModal] = useState(false);
   const [closedPpc, setClosedPpc] = useState<number | null>(null);
-  const [closeoutDate, setCloseoutDate] = useState(
-    new Date().toISOString().split('T')[0]
-  );
+  const weekStart = getWeekStart(currentWeek);
+  const closeoutDateValue = new Date(`${weekStart}T00:00:00`);
+  closeoutDateValue.setDate(closeoutDateValue.getDate() + 7);
+  const closeoutDate = closeoutDateValue.toISOString().split('T')[0];
 
   const weekCommitments = useMemo(() => {
     return data.commitments
@@ -61,9 +62,14 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
             0
         );
 
-        const actualQty = Number(
-          commitment.actual_qty ?? 0
-        );
+        const actualQty = data.actuals
+          .filter(
+            (actual) =>
+              actual.commitment_id === commitment.id &&
+              actual.day_date >= getWeekStart(currentWeek) &&
+              actual.day_date < getWeekEnd(currentWeek)
+          )
+          .reduce((sum, actual) => sum + Number(actual.achieved_qty || 0), 0);
 
         const quantityProgress =
           plannedQty > 0
@@ -84,10 +90,12 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
           quantityProgress
         };
       });
-  }, [data.commitments, data.tasks, data.lookahead, currentWeek]);
+  }, [data.commitments, data.tasks, data.lookahead, data.actuals, currentWeek]);
 
   const totalCommitted = weekCommitments.length;
-  const doneCount = weekCommitments.filter((c) => c.commitment.outcome === 'done').length;
+  const doneCount = weekCommitments.filter(
+    (c) => c.plannedQty > 0 && c.actualQty >= c.plannedQty
+  ).length;
   const notDoneCount = weekCommitments.filter((c) => c.commitment.outcome === 'not_done').length;
   const pendingCount = weekCommitments.filter(
     (c) => !c.commitment.outcome || c.commitment.outcome === 'pending'
@@ -281,52 +289,15 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
                       </div>
 
                       <div className="p-3 rounded-lg bg-slate-900 border border-[#334155]">
-                        <label className="text-[10px] uppercase text-[#64748b]">
+                        <div className="text-xs text-gray-400">
                           Actual Quantity
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={actualQty}
-                          onChange={(e) => {
-                            const nextActualQty =
-                              Number(e.target.value) || 0;
-
-                            if (plannedQty <= 0) {
-                              onUpdateCommitmentOutcome(
-                                commitment.id,
-                                'not_done',
-                                commitment.reason_code || 1,
-                                nextActualQty
-                              );
-                              return;
-                            }
-
-                            const progress = Math.min(
-                              100,
-                              Math.round(
-                                (nextActualQty / plannedQty) *
-                                  100
-                              )
-                            );
-
-                            const outcome =
-                              progress >= 100
-                                ? 'done'
-                                : 'not_done';
-
-                            onUpdateCommitmentOutcome(
-                              commitment.id,
-                              outcome,
-                              outcome === 'not_done'
-                                ? commitment.reason_code || 1
-                                : undefined,
-                              nextActualQty
-                            );
-
-                          }}
-                          className="w-full mt-1 px-3 py-2 bg-[#0f172a] border border-[#334155] rounded text-sm text-[#f8fafc]"
-                        />
+                        </div>
+                        <div className="text-lg font-semibold text-[#f8fafc] mt-1">
+                          {actualQty.toLocaleString()} {task.uom}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          From Daily Check-In
+                        </div>
                       </div>
 
                       <div className="p-3 rounded-lg bg-slate-900 border border-[#334155]">
@@ -418,19 +389,18 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
 
       {/* Close Out Action Button */}
       <div className="p-4 rounded-lg bg-[#1e293b] border border-[#334155]">
-        <label className="block text-xs font-semibold text-[#94a3b8] mb-2">
-          Close Out Date
-        </label>
-
-        <div className="flex items-center gap-2">
-          <Calendar className="w-4 h-4 text-[#f59e0b]" />
-
-          <input
-            type="date"
-            value={closeoutDate}
-            onChange={(e) => setCloseoutDate(e.target.value)}
-            className="px-3 py-2 bg-[#0f172a] border border-[#334155] rounded-lg text-sm text-[#f8fafc]"
-          />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+          <div>
+            <div className="font-semibold text-[#94a3b8]">Week Start</div>
+            <div className="mt-1 font-bold text-[#f8fafc]">{weekStart}</div>
+          </div>
+          <div>
+            <div className="font-semibold text-[#94a3b8]">Closeout Date</div>
+            <div className="mt-1 flex items-center gap-2 font-bold text-[#f8fafc]">
+              <Calendar className="w-4 h-4 text-[#f59e0b]" />
+              {formatDate(closeoutDate)}
+            </div>
+          </div>
         </div>
       </div>
 

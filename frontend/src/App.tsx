@@ -508,6 +508,7 @@ function AppContent() {
 
   const handleTogglePullPlanTask = (taskId: string) => {
     const task = data.tasks.find((t) => t.id === taskId);
+
     if (!task) return;
 
     const newPullPlanned = !(task.pull_planned ?? false);
@@ -517,7 +518,7 @@ function AppContent() {
         ? {
             ...t,
             pull_planned: newPullPlanned,
-            lookahead_planned: newPullPlanned
+            lookahead_planned: newPullPlanned,
           }
         : t
     );
@@ -525,10 +526,11 @@ function AppContent() {
     let updatedLookahead = [...data.lookahead];
 
     if (newPullPlanned) {
+      // Pull Planning is ONLY for the currently selected week.
       const existingItem = updatedLookahead.find(
         (item) =>
           item.task_id === taskId &&
-          item.week_key === currentWeek
+          item.week_key === data.config.current_week_key
       );
 
       if (!existingItem) {
@@ -539,8 +541,12 @@ function AppContent() {
           Number(task.daily_planned_quantity) ||
           totalQuantity / durationDays;
 
+        const weekKey = data.config.current_week_key;
+
         const plannedQty =
-          Math.round(dailyQuantity * 7 * 100) / 100;
+          Math.round(
+            dailyQuantity * Math.min(durationDays, 7) * 100
+          ) / 100;
 
         const openConstraints = getOpenConstraintCount(
           taskId,
@@ -552,7 +558,7 @@ function AppContent() {
           task_id: taskId,
           phase_id: task.phase_id ?? null,
           constraint_ids: [],
-          week_key: currentWeek,
+          week_key: weekKey,
           planned_qty: plannedQty,
           carry_forward_qty: 0,
           remaining_qty: plannedQty,
@@ -565,7 +571,10 @@ function AppContent() {
     } else {
       updatedLookahead = updatedLookahead.filter(
         (item) =>
-          !(item.task_id === taskId && item.week_key === currentWeek)
+          !(
+            item.task_id === taskId &&
+            item.week_key === data.config.current_week_key
+          )
       );
     }
 
@@ -636,24 +645,22 @@ function AppContent() {
   };
 
   const handleResolveConstraint = (constraintId: string) => {
-    const resolutionDate =
-      new Date().toISOString().split('T')[0];
+    const resolutionDate = new Date().toISOString().split('T')[0];
 
-    const updatedConstraints = data.constraints.map((c) =>
-      c.id === constraintId
+    const updatedConstraints = data.constraints.map((constraint) =>
+      constraint.id === constraintId
         ? {
-            ...c,
+            ...constraint,
             status: 'Resolved' as const,
             resolved_date: resolutionDate
           }
-        : c
+        : constraint
     );
 
-    const refreshedLookahead =
-      refreshLookaheadReadiness(
-        data.lookahead,
-        updatedConstraints
-      );
+    const refreshedLookahead = refreshLookaheadReadiness(
+      data.lookahead,
+      updatedConstraints
+    );
 
     updateData({
       ...data,
@@ -662,7 +669,7 @@ function AppContent() {
     });
 
     showToast(
-      `Constraint resolved on ${resolutionDate}. Task is ready from the next working day.`,
+      `Constraint resolved on ${resolutionDate}. Work can start from the next working day.`,
       'success'
     );
   };
@@ -692,32 +699,60 @@ function AppContent() {
 
   // Commitment Actions
   const handleAddCommitment = (com: Commitment) => {
-    const lookahead = data.lookahead.find(
-      (item) =>
-        item.task_id === com.task_id &&
-        item.week_key === com.week_key
+    const task = data.tasks.find((t) => t.id === com.task_id);
+
+    if (!task) {
+      showToast('Task not found. Commitment cannot be created.', 'error');
+      return;
+    }
+
+    const openConstraints = data.constraints.filter(
+      (constraint) =>
+        constraint.task_id === com.task_id &&
+        constraint.status !== 'Resolved'
     );
 
-    const commitmentWithLookahead: Commitment = {
-      ...com,
-      lookahead_id:
-        com.lookahead_id ??
-        lookahead?.id ??
-        null
-    };
+    if (openConstraints.length > 0) {
+      showToast(
+        `Cannot commit this task. ${openConstraints.length} constraint${
+          openConstraints.length > 1 ? 's are' : ' is'
+        } still open.`,
+        'warning'
+      );
+      return;
+    }
+
+    const existingCommitment = data.commitments.find(
+      (commitment) =>
+        commitment.task_id === com.task_id &&
+        commitment.week_key === com.week_key
+    );
+
+    if (existingCommitment) {
+      showToast(
+        'This task is already committed for the selected week.',
+        'warning'
+      );
+      return;
+    }
 
     const updated = {
       ...data,
       commitments: [
         ...data.commitments,
-        commitmentWithLookahead
+        {
+          ...com,
+          outcome: com.outcome ?? 'pending',
+          actual_qty: com.actual_qty ?? 0,
+          progress_percent: com.progress_percent ?? 0
+        }
       ]
     };
 
     updateData(updated);
 
     showToast(
-      'Commitment promised and linked to Lookahead activity',
+      'Commitment accepted — task is Ready and locked to the Weekly Work Plan.',
       'success'
     );
   };
@@ -799,7 +834,8 @@ function AppContent() {
 
         const commitmentActuals = updatedActuals.filter(
           (entry) =>
-            entry.commitment_id === commitment.id
+            entry.commitment_id === commitment.id &&
+            entry.day_date <= actual.day_date
         );
 
         const cumulativeAchieved = commitmentActuals.reduce(
@@ -839,66 +875,103 @@ function AppContent() {
     );
   };
 
-  const getNextWeekKey = (weekKey: string): string => {
-    const match = weekKey.match(/^(\d{4})-W(\d{2})$/);
-    if (!match) return weekKey;
-
-    const year = Number(match[1]);
-    const week = Number(match[2]);
-
-    if (week >= 52) {
-      return `${year + 1}-W01`;
-    }
-
-    return `${year}-W${String(week + 1).padStart(2, '0')}`;
-  };
-
   const handleCloseOutWeek = (
     weekKey: string,
-    ppc: number,
+    finalPpc: number,
     closeoutDate: string
   ) => {
+    const getNextWeekKey = (selectedWeekKey: string): string => {
+      const match = selectedWeekKey.match(/^\d{4}-W(\d{2})$/);
+
+      if (!match) {
+        return selectedWeekKey;
+      }
+
+      const year = Number(match[1]);
+      const week = Number(match[2]);
+
+      if (week >= 52) {
+        return `${year + 1}-W01`;
+      }
+
+      return `${year}-W${String(week + 1).padStart(2, '0')}`;
+    };
+
     const nextWeekKey = getNextWeekKey(weekKey);
     let updatedLookahead = [...data.lookahead];
 
-    data.commitments
-      .filter((commitment) => commitment.week_key === weekKey)
-      .forEach((commitment) => {
-        const task = data.tasks.find((item) => item.id === commitment.task_id);
-        if (!task) return;
+    const weekStartDate = getWeekStart(weekKey);
+    const weekEndDate = getWeekEnd(weekKey);
 
-        const plannedQty = Number(commitment.planned_qty) || 0;
-        const actualQty = Number(commitment.actual_qty) || 0;
-        const remainingQty = Math.max(0, plannedQty - actualQty);
+    const weekCommitments = data.commitments.filter(
+      (commitment) => commitment.week_key === weekKey
+    );
 
-        if (remainingQty <= 0) return;
+    for (const commitment of weekCommitments) {
+      const task = data.tasks.find(
+        (item) => item.id === commitment.task_id
+      );
 
-        const existingNextWeek = updatedLookahead.find(
-          (item) =>
-            item.task_id === commitment.task_id &&
-            item.week_key === nextWeekKey
+      if (!task) continue;
+
+      const plannedQty = Number(commitment.planned_qty) || 0;
+
+      // Daily Check-In is the source of truth for actual quantity.
+      const actualQty = data.actuals
+        .filter(
+          (actual) =>
+            actual.commitment_id === commitment.id &&
+            actual.day_date >= weekStartDate &&
+            actual.day_date < weekEndDate
+        )
+        .reduce(
+          (sum, actual) =>
+            sum + (Number(actual.achieved_qty) || 0),
+          0
         );
 
-        if (existingNextWeek) {
-          updatedLookahead = updatedLookahead.map((item) =>
-            item.id === existingNextWeek.id
-              ? {
-                  ...item,
-                  planned_qty: Number(item.planned_qty || 0) + remainingQty,
-                  carry_forward_qty: Number(item.carry_forward_qty || 0) + remainingQty,
-                  remaining_qty: Number(item.remaining_qty || 0) + remainingQty
-                }
-              : item
-          );
-          return;
-        }
+      const remainingQty = Math.max(
+        0,
+        plannedQty - actualQty
+      );
 
+      if (remainingQty <= 0) {
+        continue;
+      }
+
+      const existingNextWeek = updatedLookahead.find(
+        (item) =>
+          item.task_id === commitment.task_id &&
+          item.week_key === nextWeekKey
+      );
+
+      if (existingNextWeek) {
+        updatedLookahead = updatedLookahead.map((item) =>
+          item.id === existingNextWeek.id
+            ? {
+                ...item,
+                planned_qty:
+                  (Number(item.planned_qty) || 0) +
+                  remainingQty,
+                carry_forward_qty:
+                  (Number(item.carry_forward_qty) || 0) +
+                  remainingQty,
+                remaining_qty:
+                  (Number(item.remaining_qty) || 0) +
+                  remainingQty,
+                notes: item.notes
+                  ? `${item.notes} Carry-forward from ${weekKey}.`
+                  : `Carry-forward from ${weekKey}.`
+              }
+            : item
+        );
+      } else {
         const openConstraints = getOpenConstraintCount(
           commitment.task_id,
           data.constraints
         );
 
-        updatedLookahead.push({
+        const newLookaheadItem: LookaheadItem = {
           id: generateId('LKH'),
           task_id: commitment.task_id,
           phase_id: task.phase_id ?? null,
@@ -908,35 +981,44 @@ function AppContent() {
           carry_forward_qty: remainingQty,
           remaining_qty: remainingQty,
           ready: openConstraints === 0,
-          notes: `Carry-forward from ${weekKey}`
-        });
-      });
+          notes: `Carry-forward from ${weekKey}.`
+        };
+
+        updatedLookahead.push(newLookaheadItem);
+      }
+    }
 
     updatedLookahead = refreshLookaheadReadiness(
       updatedLookahead,
       data.constraints
     );
 
+    const newMetric = {
+      ...computeMetrics(weekKey, data),
+      id: generateId('MET'),
+      week_key: weekKey,
+      ppc: finalPpc,
+      closeout_date: closeoutDate,
+      status: 'Closed' as const
+    };
+
     const updatedMetrics = [
       ...data.metrics.filter((metric) => metric.week_key !== weekKey),
-      {
-        ...computeMetrics(weekKey, data),
-        id: generateId('MET'),
-        week_key: weekKey,
-        ppc,
-        closeout_date: closeoutDate,
-        status: 'Closed' as const
-      }
+      newMetric
     ];
 
     updateData({
       ...data,
       lookahead: updatedLookahead,
-      metrics: updatedMetrics
+      metrics: updatedMetrics,
+      config: {
+        ...data.config,
+        current_week_key: nextWeekKey
+      }
     });
 
     showToast(
-      `Week closed. Remaining work carried forward to ${nextWeekKey}.`,
+      `Week ${weekKey} closed. Unfinished quantities carried forward to ${nextWeekKey}.`,
       'success'
     );
   };
@@ -1198,6 +1280,7 @@ function AppContent() {
               currentWeek={currentWeek}
               onAddToLookahead={handleAddToLookahead}
               onRefreshReadiness={handleRefreshReadiness}
+              onAddConstraint={handleAddConstraint}
               onResolveConstraint={handleResolveConstraint}
               onNavigateToCommit={() => navigateToNav('week-commit')}
             />

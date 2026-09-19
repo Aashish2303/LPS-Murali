@@ -207,6 +207,17 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
   };
 
   const handleSaveRow = (commitmentId: string) => {
+    const commitment = data.commitments.find(
+      (item) => item.id === commitmentId
+    );
+
+    if (
+      !commitment ||
+      !canWorkOnDate(commitment.task_id, selectedDate)
+    ) {
+      return;
+    }
+
     const row = rowStates[commitmentId];
     if (!row) return;
 
@@ -242,6 +253,43 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
         saved: true
       }
     }));
+
+    const nextDay = new Date(`${selectedDate}T00:00:00`);
+    nextDay.setDate(nextDay.getDate() + 1);
+    setSelectedDate(toISODate(nextDay));
+  };
+
+  const canWorkOnDate = (
+    taskId: string,
+    workDate: string
+  ): boolean => {
+    const taskConstraints = data.constraints.filter(
+      (constraint) => constraint.task_id === taskId
+    );
+
+    const unresolvedConstraint = taskConstraints.some(
+      (constraint) => constraint.status !== 'Resolved'
+    );
+
+    if (unresolvedConstraint) {
+      return false;
+    }
+
+    const latestResolutionDate = taskConstraints
+      .filter(
+        (constraint) =>
+          constraint.status === 'Resolved' &&
+          constraint.resolved_date
+      )
+      .map((constraint) => constraint.resolved_date as string)
+      .sort()
+      .pop();
+
+    if (!latestResolutionDate) {
+      return true;
+    }
+
+    return workDate > latestResolutionDate;
   };
 
   // Open constraints
@@ -258,6 +306,28 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
   const weeklyAchieved = data.actuals
     .filter((actual) => weekDays.includes(actual.day_date))
     .reduce((total, actual) => total + Number(actual.achieved_qty || 0), 0);
+  const weeklyCommitted = data.commitments.filter(
+    (commitment) => commitment.week_key === currentWeek
+  );
+  const weeklyPlannedCommitmentQty = weeklyCommitted.reduce(
+    (total, commitment) => total + Number(commitment.planned_qty || 0),
+    0
+  );
+  const weeklyActualCommitmentQty = weeklyCommitted.reduce(
+    (total, commitment) => total + data.actuals
+      .filter((actual) => actual.commitment_id === commitment.id && weekDays.includes(actual.day_date))
+      .reduce((sum, actual) => sum + Number(actual.achieved_qty || 0), 0),
+    0
+  );
+  const weeklyDoneCount = weeklyCommitted.filter((commitment) => {
+    const actual = data.actuals
+      .filter((entry) => entry.commitment_id === commitment.id && weekDays.includes(entry.day_date))
+      .reduce((sum, entry) => sum + Number(entry.achieved_qty || 0), 0);
+    return actual >= Number(commitment.planned_qty || 0);
+  }).length;
+  const weeklyPpc = weeklyCommitted.length > 0
+    ? Math.round((weeklyDoneCount / weeklyCommitted.length) * 100)
+    : 0;
   return (
     <div id="daily-checkin-view" className="space-y-8 max-w-6xl mx-auto pb-12 animate-fade-in">
       {/* Top Banner with simulated teaching date */}
@@ -318,9 +388,11 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
             );
           })}
         </div>
-        <div className="flex flex-wrap gap-3 text-xs text-[#cbd5e1]">
-          <span>Weekly planned: <strong className="text-[#38bdf8]">{weeklyPlanned.toFixed(2)}</strong></span>
-          <span>Weekly achieved: <strong className="text-[#10b981]">{weeklyAchieved.toFixed(2)}</strong></span>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs text-[#cbd5e1]">
+          <span>Planned Quantity <strong className="block text-[#38bdf8]">{weeklyPlannedCommitmentQty.toFixed(2)}</strong></span>
+          <span>Actual Quantity <strong className="block text-[#10b981]">{weeklyActualCommitmentQty.toFixed(2)}</strong></span>
+          <span>Remaining <strong className="block text-[#f59e0b]">{Math.max(0, weeklyPlannedCommitmentQty - weeklyActualCommitmentQty).toFixed(2)}</strong></span>
+          <span>PPC <strong className="block text-[#f8fafc]">{weeklyPpc}%</strong></span>
         </div>
       </div>
 
@@ -353,10 +425,15 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
                     : 0,
                 achieved: 0,
                 note: '',
+                reasonCode: null,
                 saved: false
               };
               const planned = Number(row.planned) || 0;
               const achieved = Number(row.achieved) || 0;
+              const workAllowed = canWorkOnDate(
+                commitment.task_id,
+                selectedDate
+              );
 
               // Color code achieved input: green when >= planned, amber when partial > 0, red when 0
               let achievedStyle = 'border-slate-700 bg-[#0f172a] text-[#f8fafc]';
@@ -385,6 +462,13 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
                     </div>
                     <div className="text-xs font-bold text-[#f8fafc] line-clamp-1">{task.description}</div>
                     <div className="text-[10px] text-[#94a3b8] mt-0.5">Location: {task.location} ({task.uom})</div>
+                    {!workAllowed && (
+                      <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-400">
+                        Work cannot be recorded for this date.
+                        <br />
+                        The constraint was resolved later, so execution starts on the next working day.
+                      </div>
+                    )}
                   </div>
 
                   {/* Planned quantity from Lookahead */}
@@ -404,6 +488,7 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
                     <input
                       type="number"
                       min="0"
+                      disabled={!workAllowed}
                       value={row.achieved}
                       onChange={(e) => handleRowChange(commitment.id, 'achieved', Number(e.target.value))}
                       className={`w-full px-2.5 py-1.5 border rounded text-xs focus:outline-none transition-all ${achievedStyle}`}
@@ -463,8 +548,12 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
                     <button
                       id={`btn-save-actual-${commitment.id}`}
                       type="button"
+                      disabled={!workAllowed}
                       onClick={() => handleSaveRow(commitment.id)}
-                      className={`px-3 py-1.5 rounded text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                      className={`px-3 py-1.5 rounded text-xs font-bold transition-all flex items-center gap-1 ${
+                        !workAllowed
+                          ? 'bg-gray-700 text-gray-400 border border-gray-600 cursor-not-allowed'
+                          :
                         row.saved
                           ? 'bg-emerald-500/20 text-[#10b981] border border-emerald-500/30'
                           : 'bg-[#f59e0b] hover:bg-amber-600 text-[#0f172a]'
