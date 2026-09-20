@@ -308,8 +308,6 @@ function AppContent() {
     setIsMobileMenuOpen(false);
   };
 
-  const currentWeek = data.config.current_week_key ?? '2026-W35';
-
   const getISOWeekKey = (date: Date): string => {
     const d = new Date(date);
     d.setHours(0, 0, 0, 0);
@@ -326,7 +324,21 @@ function AppContent() {
     return `${year}-W${String(weekNo).padStart(2, '0')}`;
   };
 
-  const getWeekStart = (weekKey: string): Date | null => {
+  const savedWeekKey = data.config.current_week_key;
+  const currentWeek =
+    savedWeekKey && /^\d{4}-W\d{2}$/.test(savedWeekKey)
+      ? savedWeekKey
+      : getISOWeekKey(
+          new Date(
+            `${String(data.config.startDate || data.config.start_date || '').slice(0, 10)}T00:00:00`
+          ).getTime()
+            ? new Date(
+                `${String(data.config.startDate || data.config.start_date).slice(0, 10)}T00:00:00`
+              )
+            : new Date()
+        );
+
+  const getWeekStart =(weekKey: string): Date | null => {
     const match = weekKey.match(/^(\d{4})-W(\d{2})$/);
 
     if (!match) return null;
@@ -983,7 +995,7 @@ function AppContent() {
       return;
     }
     const getNextWeekKey = (selectedWeekKey: string): string => {
-      const match = selectedWeekKey.match(/^\d{4}-W(\d{2})$/);
+      const match = selectedWeekKey.match(/^(\d{4})-W(\d{2})$/);
 
       if (!match) {
         return selectedWeekKey;
@@ -991,8 +1003,11 @@ function AppContent() {
 
       const year = Number(match[1]);
       const week = Number(match[2]);
+      const lastWeekOfYear = Number(
+        getISOWeekKey(new Date(year, 11, 28)).split('-W')[1]
+      );
 
-      if (week >= 52) {
+      if (week >= lastWeekOfYear) {
         return `${year + 1}-W01`;
       }
 

@@ -34,7 +34,10 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
 }) => {
   const [showRevealModal, setShowRevealModal] = useState(false);
   const [closedPpc, setClosedPpc] = useState<number | null>(null);
-  const configuredProjectStart = data.config.startDate || data.config.start_date;
+  const rawProjectStart = data.config.startDate || data.config.start_date;
+  const configuredProjectStart = rawProjectStart
+    ? String(rawProjectStart).slice(0, 10)
+    : rawProjectStart;
   const isoWeekStart = getWeekStart(currentWeek);
   const weekStart = (() => {
     if (!configuredProjectStart) return isoWeekStart;
