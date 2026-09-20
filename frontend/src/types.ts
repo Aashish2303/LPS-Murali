@@ -10,6 +10,7 @@ export interface ProjectConfig {
   end_date?: string;
   current_week_key?: string;
   lookahead_weeks?: number;
+  lookahead_configured?: boolean;
   projectManager?: string;
   leanChampion?: string;
 }
@@ -99,6 +100,7 @@ export interface Constraint {
   target_date: string;
   status: 'Open' | 'Resolved';
   resolved_date?: string | null;
+  resolution_reason?: string;
 }
 
 export interface LookaheadItem {

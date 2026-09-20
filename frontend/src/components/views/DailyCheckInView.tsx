@@ -7,7 +7,7 @@ interface DailyCheckInViewProps {
   data: LPSData;
   currentWeek: string;
   onSaveDailyActual: (actual: ActualEntry) => void;
-  onResolveConstraint: (constraintId: string) => void;
+  onResolveConstraint: (constraintId: string, reason: string) => void;
 }
 
 export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
@@ -29,6 +29,17 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
 
     monday.setDate(jan4.getDate() - day + 1 + (week - 1) * 7);
     monday.setHours(0, 0, 0, 0);
+
+    const projectStart = data.config.startDate || data.config.start_date;
+    if (projectStart) {
+      const start = new Date(`${projectStart}T00:00:00`);
+      const firstMonday = new Date(start);
+      const firstDay = firstMonday.getDay() || 7;
+      firstMonday.setDate(firstMonday.getDate() - firstDay + 1);
+      const offsetWeeks = Math.round((monday.getTime() - firstMonday.getTime()) / 604800000);
+      start.setDate(start.getDate() + offsetWeeks * 7);
+      return start;
+    }
 
     return monday;
   };
@@ -149,7 +160,7 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
       const next: Record<string, RowState> = {};
 
       pendingCommitments.forEach(
-        ({ commitment, existingActual, lookaheadItem }) => {
+        ({ commitment, existingActual, lookaheadItem, task }) => {
           const previousRow = previous[commitment.id];
 
           if (existingActual) {
@@ -169,10 +180,10 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
           }
 
           next[commitment.id] = {
-            planned:
-              lookaheadItem?.planned_qty != null
-                ? Number(lookaheadItem.planned_qty)
-                : 0,
+            planned: Math.min(
+              Number(task.daily_planned_quantity) || Number(lookaheadItem?.planned_qty) || 0,
+              Number(commitment.planned_qty ?? lookaheadItem?.planned_qty ?? 0)
+            ),
             achieved: 0,
             note: '',
             reasonCode: null,
@@ -190,6 +201,14 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
     field: 'planned' | 'achieved' | 'note' | 'reasonCode',
     value: number | string | null
   ) => {
+    if (field === 'achieved') {
+      const commitment = data.commitments.find((item) => item.id === commitmentId);
+      const plannedQty = Number(commitment?.planned_qty || 0);
+      const recordedElsewhere = data.actuals
+        .filter((entry) => entry.commitment_id === commitmentId && entry.day_date !== selectedDate)
+        .reduce((sum, entry) => sum + Number(entry.achieved_qty || 0), 0);
+      value = Math.min(Math.max(0, Number(value) || 0), Math.max(0, plannedQty - recordedElsewhere));
+    }
     setRowStates((prev) => ({
       ...prev,
       [commitmentId]: {
@@ -223,6 +242,11 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
 
     const planned = Number(row.planned) || 0;
     const achieved = Number(row.achieved) || 0;
+
+    const otherDaysTotal = data.actuals
+      .filter((entry) => entry.commitment_id === commitmentId && entry.day_date !== selectedDate)
+      .reduce((sum, entry) => sum + Number(entry.achieved_qty || 0), 0);
+    if (achieved > Math.max(0, Number(commitment.planned_qty || 0) - otherDaysTotal) + 0.000001) return;
 
     if (achieved < planned && !row.reasonCode) {
       return;
@@ -430,6 +454,10 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
               };
               const planned = Number(row.planned) || 0;
               const achieved = Number(row.achieved) || 0;
+              const recordedElsewhere = data.actuals
+                .filter((entry) => entry.commitment_id === commitment.id && entry.day_date !== selectedDate)
+                .reduce((sum, entry) => sum + Number(entry.achieved_qty || 0), 0);
+              const remainingQuantity = Math.max(0, Number(commitment.planned_qty || 0) - recordedElsewhere);
               const workAllowed = canWorkOnDate(
                 commitment.task_id,
                 selectedDate
@@ -488,11 +516,13 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
                     <input
                       type="number"
                       min="0"
+                      max={remainingQuantity}
                       disabled={!workAllowed}
                       value={row.achieved}
                       onChange={(e) => handleRowChange(commitment.id, 'achieved', Number(e.target.value))}
                       className={`w-full px-2.5 py-1.5 border rounded text-xs focus:outline-none transition-all ${achievedStyle}`}
                     />
+                    <p className="mt-1 text-[10px] text-[#94a3b8]">Remaining this week: {remainingQuantity.toFixed(2)}</p>
                   </div>
 
                   {/* Note Input */}
@@ -607,7 +637,10 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
 
                 <button
                   id={`btn-daily-resolve-${c.id}`}
-                  onClick={() => onResolveConstraint(c.id)}
+                  onClick={() => {
+                    const reason = window.prompt('How was this constraint resolved?');
+                    if (reason?.trim()) onResolveConstraint(c.id, reason);
+                  }}
                   className="px-3 py-1 rounded bg-[#10b981]/20 hover:bg-[#10b981] hover:text-[#0f172a] text-[#10b981] border border-[#10b981]/40 font-bold text-xs transition-all shrink-0 cursor-pointer"
                 >
                   ✅ Mark Resolved

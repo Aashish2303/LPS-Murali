@@ -11,7 +11,7 @@ import {
   Calendar
 } from 'lucide-react';
 import { LPSData, REASON_CODES } from '../../types';
-import { computeMetrics, formatDate, getCoachingDiagnosis, getWeekEnd, getWeekStart } from '../../services/storage';
+import { computeMetrics, formatDate, getCoachingDiagnosis, getWeekEnd, getWeekKeyForDate, getWeekStart } from '../../services/storage';
 
 interface CloseOutWeekViewProps {
   data: LPSData;
@@ -34,10 +34,29 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
 }) => {
   const [showRevealModal, setShowRevealModal] = useState(false);
   const [closedPpc, setClosedPpc] = useState<number | null>(null);
-  const weekStart = getWeekStart(currentWeek);
+  const configuredProjectStart = data.config.startDate || data.config.start_date;
+  const isoWeekStart = getWeekStart(currentWeek);
+  const weekStart = (() => {
+    if (!configuredProjectStart) return isoWeekStart;
+    const start = new Date(`${configuredProjectStart}T00:00:00`);
+    const firstIsoStart = getWeekStart(getWeekKeyForDate(configuredProjectStart));
+    const offset = Math.round((new Date(`${isoWeekStart}T00:00:00`).getTime() - new Date(`${firstIsoStart}T00:00:00`).getTime()) / 604800000);
+    start.setDate(start.getDate() + offset * 7);
+    return start.toISOString().split('T')[0];
+  })();
   const closeoutDateValue = new Date(`${weekStart}T00:00:00`);
   closeoutDateValue.setDate(closeoutDateValue.getDate() + 7);
   const closeoutDate = closeoutDateValue.toISOString().split('T')[0];
+  const projectStart = configuredProjectStart || weekStart;
+  const projectStartWeek = getWeekKeyForDate(projectStart);
+  const previousWeek = (() => {
+    const date = new Date(`${weekStart}T00:00:00`);
+    date.setDate(date.getDate() - 7);
+    return getWeekKeyForDate(date);
+  })();
+  const previousWeekClosed = currentWeek === projectStartWeek || data.metrics.some(
+    (metric) => metric.week_key === previousWeek && metric.status === 'Closed'
+  );
 
   const weekCommitments = useMemo(() => {
     return data.commitments
@@ -66,8 +85,8 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
           .filter(
             (actual) =>
               actual.commitment_id === commitment.id &&
-              actual.day_date >= getWeekStart(currentWeek) &&
-              actual.day_date < getWeekEnd(currentWeek)
+              actual.day_date >= weekStart &&
+              actual.day_date < closeoutDate
           )
           .reduce((sum, actual) => sum + Number(actual.achieved_qty || 0), 0);
 
@@ -101,9 +120,24 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
     (c) => !c.commitment.outcome || c.commitment.outcome === 'pending'
   ).length;
 
+  // A daily check-in is required only until the committed quantity is reached.
+  // After completion, remaining days are intentionally not mandatory.
+  const dailyCheckinsComplete = weekCommitments.every(({ commitment, plannedQty }) => {
+    let cumulative = 0;
+    for (let offset = 0; offset < 7 && cumulative < plannedQty; offset += 1) {
+      const date = new Date(`${weekStart}T00:00:00`);
+      date.setDate(date.getDate() + offset);
+      const day = date.toISOString().split('T')[0];
+      const entry = data.actuals.find((actual) => actual.commitment_id === commitment.id && actual.day_date === day);
+      if (!entry) return false;
+      cumulative += Number(entry.achieved_qty || 0);
+    }
+    return true;
+  });
+
   // Validation: Every commitment has an outcome AND every Not Done has a valid reason_code
   const allRecorded =
-    totalCommitted > 0 &&
+    totalCommitted > 0 && dailyCheckinsComplete &&
     weekCommitments.every((c) => {
       if (c.commitment.outcome === 'done') return true;
       if (c.commitment.outcome === 'not_done') return !!c.commitment.reason_code;
@@ -118,7 +152,7 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
   };
 
   const handleExecuteCloseOut = () => {
-    if (!allRecorded) return;
+    if (!allRecorded || !previousWeekClosed) return;
 
     onCloseOutWeek(
       currentWeek,
@@ -248,9 +282,7 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
                 commitment.outcome === 'done' ||
                 autoDone;
 
-              const isNotDone =
-                commitment.outcome === 'not_done' ||
-                autoNotDone;
+              const isNotDone = commitment.outcome === 'not_done' || (plannedQty > 0 && actualQty < plannedQty);
 
               return (
                 <div
@@ -360,7 +392,7 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
                   </div>
 
                   {/* Reason Code Dropdown if Not Done */}
-                  {isNotDone && (
+                  {!isDone && (
                     <div className="p-3.5 rounded-lg bg-red-500/10 border border-red-500/30 animate-fade-in space-y-2">
                       <label className="block text-xs font-bold text-[#ef4444]">
                         Select Primary Reason Code for Non-Completion (Mandatory for Learning):
@@ -388,6 +420,11 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
       </div>
 
       {/* Close Out Action Button */}
+      {!previousWeekClosed && (
+        <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-300">
+          Close out {previousWeek} first. Weekly check-ins and closeouts must be completed in sequence.
+        </div>
+      )}
       <div className="p-4 rounded-lg bg-[#1e293b] border border-[#334155]">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
           <div>
@@ -406,7 +443,7 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
 
       <div className="p-6 rounded-lg bg-[#1e293b] border border-[#334155] flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
         <div className="text-xs text-[#94a3b8]">
-          {allRecorded ? (
+          {allRecorded && previousWeekClosed ? (
             <span className="text-[#10b981] font-semibold flex items-center gap-1.5">
               <CheckCircle2 className="w-4 h-4" />
               <span>All commitments evaluated. Ready to seal weekly PPC.</span>
@@ -414,7 +451,7 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
           ) : (
             <span className="text-[#f59e0b] flex items-center gap-1.5">
               <AlertCircle className="w-4 h-4" />
-              <span>Evaluate all {pendingCount} pending commitments with reason codes to enable Close Out.</span>
+              <span>{!dailyCheckinsComplete ? 'Record daily check-ins through completion (or through the end of the week for unfinished work).' : `Evaluate all ${pendingCount} pending commitments with reason codes to enable Close Out.`}</span>
             </span>
           )}
         </div>
@@ -422,10 +459,10 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
         <button
           id="btn-closeout-submit"
           type="button"
-          disabled={!allRecorded}
+          disabled={!allRecorded || !previousWeekClosed}
           onClick={handleExecuteCloseOut}
           className={`px-6 py-3 rounded-lg font-extrabold text-xs transition-all flex items-center gap-2 cursor-pointer ${
-            allRecorded
+            allRecorded && previousWeekClosed
               ? `${ppcColor.btn} text-[#0f172a] shadow-xl hover:scale-102`
               : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed opacity-60'
           }`}

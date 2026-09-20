@@ -64,7 +64,9 @@ interface LookaheadViewProps {
   onAddToLookahead: (item: LookaheadItem) => void;
   onRefreshReadiness: () => void;
   onAddConstraint: (constraint: Constraint) => void;
-  onResolveConstraint: (constraintId: string) => void;
+  onUpdateConstraint: (constraint: Constraint) => void;
+  onResolveConstraint: (constraintId: string, reason: string) => void;
+  onSetLookaheadWeeks: (weeks: 3 | 4 | 5) => void;
   onNavigateToCommit: () => void;
 }
 
@@ -74,7 +76,9 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
   onAddToLookahead,
   onRefreshReadiness,
   onAddConstraint,
+  onUpdateConstraint,
   onResolveConstraint,
+  onSetLookaheadWeeks,
   onNavigateToCommit
 }) => {
   /*
@@ -83,8 +87,8 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
    * ---------------------------------------------------------
    */
 
-  const [lookaheadWeeks, setLookaheadWeeks] =
-    useState<3 | 4 | 5>(4);
+  const lookaheadWeeks = (data.config.lookahead_weeks === 3 || data.config.lookahead_weeks === 5
+    ? data.config.lookahead_weeks : 4) as 3 | 4 | 5;
 
   const getWeekOffset = (weekKey: string) => {
     const match = weekKey.match(
@@ -188,9 +192,18 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
         );
 
       const plannedQty =
-        Math.round(
-          dailyQuantity * daysInWeek * 100
-        ) / 100;
+        (() => {
+          // A schedule date range can include an extra calendar boundary.
+          // Never let those boundaries allocate more than the imported total.
+          const daysBeforeThisWeek = Math.max(0, Math.floor(
+            (effectiveStart.getTime() - taskStart.getTime()) / 86400000
+          ));
+          const quantityAlreadyAllocated = dailyQuantity * daysBeforeThisWeek;
+          return Math.round(Math.max(0, Math.min(
+            dailyQuantity * daysInWeek,
+            totalQuantity - quantityAlreadyAllocated
+          )) * 100) / 100;
+        })();
 
       const existingItem =
         data.lookahead.find(
@@ -215,15 +228,13 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
         week_key: weekKey,
 
         planned_qty:
-          existingItem?.planned_qty ??
-          plannedQty,
+          plannedQty + (Number(existingItem?.carry_forward_qty) || 0),
 
         carry_forward_qty:
           existingItem?.carry_forward_qty ?? 0,
 
         remaining_qty:
-          existingItem?.remaining_qty ??
-          plannedQty,
+          existingItem?.remaining_qty ?? plannedQty + (Number(existingItem?.carry_forward_qty) || 0),
 
         ready:
           getOpenConstraintCount(
@@ -269,6 +280,21 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
       target_date: new Date().toISOString().split('T')[0],
       status: 'Open'
     });
+  };
+
+  const handleResolve = (constraintId: string) => {
+    const reason = window.prompt('How was this constraint resolved?');
+    if (reason?.trim()) onResolveConstraint(constraintId, reason);
+  };
+
+  const handleEditConstraint = (constraint: Constraint) => {
+    const description = window.prompt('Constraint description', constraint.description);
+    if (!description?.trim()) return;
+    const responsible = window.prompt('Responsible owner', constraint.responsible);
+    if (!responsible?.trim()) return;
+    const targetDate = window.prompt('Target resolution date (YYYY-MM-DD)', constraint.target_date);
+    if (!targetDate?.trim()) return;
+    onUpdateConstraint({ ...constraint, description: description.trim(), responsible: responsible.trim(), target_date: targetDate.trim() });
   };
 
   const totalTasks = lookaheadItems.length;
@@ -411,6 +437,7 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
       </div>
 
       <div className="flex items-center justify-between gap-4 rounded-lg border border-[#334155] bg-[#1e293b] p-4">
+        {!data.config.lookahead_configured ? <>
         <div className="flex items-center gap-2">
           <span className="text-xs text-[#94a3b8]">
             Lookahead Horizon
@@ -426,11 +453,7 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
             <button
               key={weeks}
               type="button"
-              onClick={() =>
-                setLookaheadWeeks(
-                  weeks as 3 | 4 | 5
-                )
-              }
+              onClick={() => onSetLookaheadWeeks(weeks as 3 | 4 | 5)}
               className={`px-3 py-1.5 rounded-md text-xs font-bold border transition-colors ${
                 lookaheadWeeks === weeks
                   ? 'bg-[#38bdf8] text-[#0f172a] border-[#38bdf8]'
@@ -440,7 +463,7 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
               {weeks} Weeks
             </button>
           ))}
-        </div>
+        </div></> : <div className="text-xs text-[#94a3b8]">Project horizon: <strong className="text-[#38bdf8]">{lookaheadWeeks} weeks</strong></div>}
       </div>
 
       {/* =====================================================
@@ -642,11 +665,18 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
                           <button
                             id={`btn-resolve-lkh-${c.id}`}
                             onClick={() =>
-                              onResolveConstraint(c.id)
+                              handleResolve(c.id)
                             }
                             className="px-2 py-1 rounded bg-[#10b981]/20 hover:bg-[#10b981]/30 text-[#10b981] border border-[#10b981]/40 font-bold text-[10px] transition-all shrink-0 cursor-pointer"
                           >
                             Resolve
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleEditConstraint(c)}
+                            className="px-2 py-1 rounded border border-[#334155] text-[#94a3b8] hover:text-[#f8fafc] font-bold text-[10px]"
+                          >
+                            Edit
                           </button>
 
                         </div>

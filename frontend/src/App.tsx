@@ -181,6 +181,7 @@ function AppContent() {
   const navToPath: Record<NavItemKey, string> = {
     dashboard: '/dashboard',
     'plan-phase': '/plan/phase',
+    'plan-pull': '/plan/pull',
     'plan-lookahead': '/plan/lookahead',
     'week-commit': '/week/commit',
     'weekly-work-plan': '/week/work-plan',
@@ -332,6 +333,19 @@ function AppContent() {
     monday.setDate(jan4.getDate() - day + 1 + (week - 1) * 7);
     monday.setHours(0, 0, 0, 0);
 
+    // The first project week begins on the actual project start date, not on
+    // the Monday of the ISO label. Subsequent labels remain seven-day cycles.
+    const projectStart = data.config.startDate || data.config.start_date;
+    if (projectStart) {
+      const start = new Date(`${projectStart}T00:00:00`);
+      const firstMonday = new Date(start);
+      const firstDay = firstMonday.getDay() || 7;
+      firstMonday.setDate(firstMonday.getDate() - firstDay + 1);
+      const offsetWeeks = Math.round((monday.getTime() - firstMonday.getTime()) / 604800000);
+      start.setDate(start.getDate() + offsetWeeks * 7);
+      return start;
+    }
+
     return monday;
   };
 
@@ -460,9 +474,12 @@ function AppContent() {
       ])
       .filter((date): date is Date => !!date && !isNaN(date.getTime()));
 
-    let firstWeek = data.config.current_week_key ?? '2026-W35';
+    const configuredStart = data.config.startDate || data.config.start_date;
+    let firstWeek = configuredStart
+      ? getISOWeekKey(new Date(`${configuredStart}T00:00:00`))
+      : data.config.current_week_key ?? '2026-W35';
 
-    if (taskDates.length > 0) {
+    if (!configuredStart && taskDates.length > 0) {
       const earliest = new Date(Math.min(...taskDates.map((date) => date.getTime())));
       firstWeek = getISOWeekKey(earliest);
     }
@@ -479,7 +496,7 @@ function AppContent() {
     updateData(updatedData);
 
     showToast(
-      `Schedule imported. Project starts at ${firstWeek}.`,
+      `Schedule imported. The active cycle starts at ${firstWeek}.`,
       'success'
     );
   };
@@ -640,7 +657,23 @@ function AppContent() {
     showToast(`Constraint [${c.type}] logged for task`, 'warning');
   };
 
-  const handleResolveConstraint = (constraintId: string) => {
+  const handleUpdateConstraint = (updatedConstraint: Constraint) => {
+    const updatedConstraints = data.constraints.map((constraint) =>
+      constraint.id === updatedConstraint.id ? updatedConstraint : constraint
+    );
+    updateData({
+      ...data,
+      constraints: updatedConstraints,
+      lookahead: refreshLookaheadReadiness(data.lookahead, updatedConstraints)
+    });
+    showToast('Constraint updated for its assigned task.', 'success');
+  };
+
+  const handleResolveConstraint = (constraintId: string, resolutionReason: string) => {
+    if (!resolutionReason.trim()) {
+      showToast('Enter how this constraint was resolved before saving.', 'warning');
+      return;
+    }
     const resolutionDate = new Date().toISOString().split('T')[0];
 
     const updatedConstraints = data.constraints.map((constraint) =>
@@ -648,7 +681,8 @@ function AppContent() {
         ? {
             ...constraint,
             status: 'Resolved' as const,
-            resolved_date: resolutionDate
+            resolved_date: resolutionDate,
+            resolution_reason: resolutionReason.trim()
           }
         : constraint
     );
@@ -813,6 +847,17 @@ function AppContent() {
       updatedActuals.push(actual);
     }
 
+    const commitmentForActual = data.commitments.find((commitment) => commitment.id === actual.commitment_id);
+    const plannedForActual = Number(commitmentForActual?.planned_qty ?? 0);
+    const otherDaysTotal = updatedActuals
+      .filter((entry) => entry.commitment_id === actual.commitment_id && entry.day_date !== actual.day_date)
+      .reduce((sum, entry) => sum + (Number(entry.achieved_qty) || 0), 0);
+    const remainingForToday = Math.max(0, plannedForActual - otherDaysTotal);
+    if (plannedForActual > 0 && Number(actual.achieved_qty) > remainingForToday + 0.000001) {
+      showToast(`Daily quantity cannot exceed the remaining weekly commitment (${remainingForToday.toFixed(2)}).`, 'warning');
+      return;
+    }
+
     const updatedCommitments = data.commitments.map(
       (commitment) => {
         if (commitment.id !== actual.commitment_id) {
@@ -829,9 +874,7 @@ function AppContent() {
           Number(commitmentLookahead?.planned_qty) || 0;
 
         const commitmentActuals = updatedActuals.filter(
-          (entry) =>
-            entry.commitment_id === commitment.id &&
-            entry.day_date <= actual.day_date
+          (entry) => entry.commitment_id === commitment.id
         );
 
         const cumulativeAchieved = commitmentActuals.reduce(
@@ -876,6 +919,16 @@ function AppContent() {
     finalPpc: number,
     closeoutDate: string
   ) => {
+    const selectedStart = getWeekStart(weekKey);
+    const projectStart = data.config.startDate || data.config.start_date;
+    const previousStart = selectedStart ? new Date(selectedStart) : null;
+    if (previousStart) previousStart.setDate(previousStart.getDate() - 7);
+    const previousWeekKey = previousStart ? getISOWeekKey(previousStart) : '';
+    const isFirstProjectWeek = !projectStart || getISOWeekKey(new Date(`${projectStart}T00:00:00`)) === weekKey;
+    if (!isFirstProjectWeek && !data.metrics.some((metric) => metric.week_key === previousWeekKey && metric.status === 'Closed')) {
+      showToast(`Close out ${previousWeekKey} before moving to ${weekKey}.`, 'warning');
+      return;
+    }
     const getNextWeekKey = (selectedWeekKey: string): string => {
       const match = selectedWeekKey.match(/^\d{4}-W(\d{2})$/);
 
@@ -897,7 +950,11 @@ function AppContent() {
     let updatedLookahead = [...data.lookahead];
 
     const weekStartDate = getWeekStart(weekKey);
-    const weekEndDate = getWeekEnd(weekKey);
+    const weekEndDate = (() => {
+      const end = new Date(weekStartDate ?? new Date());
+      end.setDate(end.getDate() + 7);
+      return end;
+    })();
 
     const weekCommitments = data.commitments.filter(
       (commitment) => commitment.week_key === weekKey
@@ -917,8 +974,8 @@ function AppContent() {
         .filter(
           (actual) =>
             actual.commitment_id === commitment.id &&
-            actual.day_date >= weekStartDate &&
-            actual.day_date < weekEndDate
+            actual.day_date >= (weekStartDate?.toISOString().split('T')[0] ?? '') &&
+            actual.day_date < weekEndDate.toISOString().split('T')[0]
         )
         .reduce(
           (sum, actual) =>
@@ -1086,8 +1143,9 @@ function AppContent() {
       start_date: details.startDate,
       endDate: details.endDate,
       end_date: details.endDate,
-      current_week_key: '2026-W35',
+      current_week_key: getISOWeekKey(new Date(`${details.startDate}T00:00:00`)),
       lookahead_weeks: 4,
+      lookahead_configured: false,
       projectManager: '',
       leanChampion: ''
     },
@@ -1144,8 +1202,10 @@ function AppContent() {
       config: {
         projectName: 'New Lean Construction Project',
         project_name: 'New Lean Construction Project',
-        current_week_key: '2026-W35',
+        current_week_key: getISOWeekKey(new Date()),
         lookahead_weeks: 4,
+        lookahead_configured: false,
+        startDate: new Date().toISOString().split('T')[0],
         start_date: new Date().toISOString().split('T')[0],
         end_date: ''
       },
@@ -1244,7 +1304,10 @@ function AppContent() {
               currentWeek={currentWeek}
               metrics={metrics}
               onNavigate={navigateToNav}
-              onResolveConstraint={handleResolveConstraint}
+              onResolveConstraint={(id) => {
+                const reason = window.prompt('How was this constraint resolved?');
+                if (reason?.trim()) handleResolveConstraint(id, reason);
+              }}
               onQuickLogConstraint={() => navigateToNav('plan-lookahead')}
             />
           )}
@@ -1265,7 +1328,12 @@ function AppContent() {
               onAddToLookahead={handleAddToLookahead}
               onRefreshReadiness={handleRefreshReadiness}
               onAddConstraint={handleAddConstraint}
-              onResolveConstraint={handleResolveConstraint}
+              onUpdateConstraint={handleUpdateConstraint}
+              onResolveConstraint={(id) => {
+                const reason = window.prompt('How was this constraint resolved?');
+                if (reason?.trim()) handleResolveConstraint(id, reason);
+              }}
+              onSetLookaheadWeeks={(weeks) => updateData({ ...data, config: { ...data.config, lookahead_weeks: weeks, lookahead_configured: true } })}
               onNavigateToCommit={() => navigateToNav('week-commit')}
             />
           )}
