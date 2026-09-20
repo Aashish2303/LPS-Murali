@@ -1327,6 +1327,48 @@ app.get(
         )
       };
 
+      /*
+       * Commitments saved before planned_qty/actual_qty were persisted
+       * come back as 0. Rebuild them from the Lookahead item and the
+       * recorded daily actuals.
+       */
+      lpsData.commitments = lpsData.commitments.map(
+        (commitment: any) => {
+          const lookaheadItem =
+            lpsData.lookahead.find(
+              (item: any) =>
+                item.id === commitment.lookahead_id
+            ) ??
+            lpsData.lookahead.find(
+              (item: any) =>
+                item.task_id === commitment.task_id &&
+                item.week_key === commitment.week_key
+            );
+
+          const recordedQty = lpsData.actuals
+            .filter(
+              (actual: any) =>
+                actual.commitment_id === commitment.id
+            )
+            .reduce(
+              (sum: number, actual: any) =>
+                sum + (Number(actual.achieved_qty) || 0),
+              0
+            );
+
+          return {
+            ...commitment,
+            planned_qty:
+              Number(commitment.planned_qty) ||
+              Number(lookaheadItem?.planned_qty) ||
+              0,
+            actual_qty:
+              Number(commitment.actual_qty) ||
+              recordedQty
+          };
+        }
+      );
+
       response.json({
         id: project.id,
         name: project.name,
