@@ -36,6 +36,7 @@ import {
   getSessionUser,
   loadProjects,
   saveProjects,
+  saveProjectData,
   setSessionUser,
   clearSessionUser,
   syncProjectsFromServer,
@@ -264,7 +265,13 @@ function AppContent() {
 
     setProjects(updatedProjects);
 
-    const saved = await saveProjects(updatedProjects);
+    const currentProject = updatedProjects.find(
+      (project) => project.id === selectedProjectId
+    );
+
+    const saved = currentProject
+      ? await saveProjectData(currentProject)
+      : false;
 
     if (!saved) {
       showToast(
@@ -1213,7 +1220,7 @@ function AppContent() {
     const normalizedProject = normalizeProjectRecord(project);
     const updatedProjects = [...projects, normalizedProject];
 
-    const saved = await saveProjects(updatedProjects);
+    const saved = await saveProjects([normalizedProject]);
 
     if (!saved) {
       showToast(

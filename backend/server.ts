@@ -193,32 +193,6 @@ app.put(
 
       const projects = request.body;
 
-      /*
-       * Remove existing projects.
-       *
-       * The backend currently treats the projects payload
-       * as the complete project list.
-       */
-
-      const { error: deleteError } =
-        await supabase
-          .from('projects')
-          .delete()
-          .neq('id', '');
-
-      if (deleteError) {
-        console.error(
-          'Unable to clear projects from Supabase:',
-          deleteError
-        );
-
-        response.status(500).json({
-          error: 'Unable to save projects'
-        });
-
-        return;
-      }
-
       if (projects.length === 0) {
         response.json({
           status: 'ok',
@@ -253,7 +227,7 @@ app.put(
       const { error: insertError } =
         await supabase
           .from('projects')
-          .insert(rows);
+          .upsert(rows, { onConflict: 'id' });
 
       if (insertError) {
         console.error(
@@ -1256,37 +1230,101 @@ app.get(
        * structure expected by the existing frontend.
        */
 
+      /*
+       * Relational rows are authoritative, but fields that have no
+       * column yet (e.g. carry_forward_qty) are restored from the
+       * JSONB copy saved with the project. Null columns never
+       * override JSONB values.
+       */
+      const jsonb: any = project.data ?? {};
+
+      const keyOf = (item: any) =>
+        item?.id ?? item?.week_key ?? item?.topic_id;
+
+      const mergeRows = (
+        rows: any[] | null,
+        saved: any
+      ) => {
+        const savedByKey = new Map<any, any>(
+          (Array.isArray(saved) ? saved : [])
+            .filter(
+              (item: any) =>
+                item && typeof item === 'object'
+            )
+            .map((item: any) => [keyOf(item), item])
+        );
+
+        return (rows ?? []).map((row: any) => {
+          const extra = savedByKey.get(keyOf(row));
+
+          if (!extra) {
+            return row;
+          }
+
+          const definedRow = Object.fromEntries(
+            Object.entries(row).filter(
+              ([, value]) => value !== null
+            )
+          );
+
+          return { ...extra, ...definedRow };
+        });
+      };
+
       const lpsData = {
-        ...(project.data ?? {}),
+        ...jsonb,
 
-        phases: phasesResult.data ?? [],
+        phases: mergeRows(
+          phasesResult.data,
+          jsonb.phases
+        ),
 
-        trades: tradesResult.data ?? [],
+        trades: mergeRows(
+          tradesResult.data,
+          jsonb.trades
+        ),
 
         areas: areasResult.data ?? [],
 
-        tasks: tasksResult.data ?? [],
+        tasks: mergeRows(
+          tasksResult.data,
+          jsonb.tasks
+        ),
 
-        constraints:
-          constraintsResult.data ?? [],
+        constraints: mergeRows(
+          constraintsResult.data,
+          jsonb.constraints
+        ),
 
-        lookahead:
-          lookaheadResult.data ?? [],
+        lookahead: mergeRows(
+          lookaheadResult.data,
+          jsonb.lookahead
+        ),
 
-        commitments:
-          commitmentsResult.data ?? [],
+        commitments: mergeRows(
+          commitmentsResult.data,
+          jsonb.commitments
+        ),
 
-        actuals:
-          actualsResult.data ?? [],
+        actuals: mergeRows(
+          actualsResult.data,
+          jsonb.actuals
+        ),
 
-        metrics:
-          metricsResult.data ?? [],
+        metrics: mergeRows(
+          metricsResult.data,
+          jsonb.metrics
+        ),
 
-        closeouts:
-          closeoutsResult.data ?? [],
+        closeouts: mergeRows(
+          closeoutsResult.data,
+          jsonb.closeouts
+        ),
 
-        learnProgress:
-          learnProgressResult.data ?? []
+        learnProgress: mergeRows(
+          learnProgressResult.data,
+          jsonb.learnProgress
+        )
       };
 
       response.json({
@@ -1531,7 +1569,22 @@ app.put(
             must_finish_by:
               task.must_finish_by || null,
             pull_planned:
-              task.pull_planned === true
+              task.pull_planned === true,
+            lookahead_planned:
+              task.lookahead_planned === true,
+            total_quantity:
+              task.total_quantity ?? null,
+            daily_planned_quantity:
+              task.daily_planned_quantity ?? null,
+            eps: task.eps || null,
+            epf: task.epf || null,
+            lps: task.lps || null,
+            lpf: task.lpf || null,
+            float: task.float ?? null,
+            precedence_type:
+              task.precedence_type ?? null,
+            predecessors:
+              task.predecessors ?? []
           })
         )
       );
