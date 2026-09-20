@@ -117,12 +117,18 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
   ).length;
   const notDoneCount = weekCommitments.filter((c) => c.commitment.outcome === 'not_done').length;
   const pendingCount = weekCommitments.filter(
-    (c) => !c.commitment.outcome || c.commitment.outcome === 'pending'
+    (c) => c.actualQty < c.plannedQty && (!c.commitment.outcome || c.commitment.outcome === 'pending')
   ).length;
 
   // A daily check-in is required only until the committed quantity is reached.
   // After completion, remaining days are intentionally not mandatory.
   const dailyCheckinsComplete = weekCommitments.every(({ commitment, plannedQty }) => {
+    const totalRecorded = data.actuals
+      .filter((actual) => actual.commitment_id === commitment.id && actual.day_date >= weekStart && actual.day_date < closeoutDate)
+      .reduce((sum, actual) => sum + Number(actual.achieved_qty || 0), 0);
+    // Once the weekly quantity is met, no further daily entries are required.
+    if (plannedQty > 0 && totalRecorded >= plannedQty) return true;
+
     let cumulative = 0;
     for (let offset = 0; offset < 7 && cumulative < plannedQty; offset += 1) {
       const date = new Date(`${weekStart}T00:00:00`);
@@ -139,7 +145,7 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
   const allRecorded =
     totalCommitted > 0 && dailyCheckinsComplete &&
     weekCommitments.every((c) => {
-      if (c.commitment.outcome === 'done') return true;
+      if (c.plannedQty > 0 && c.actualQty >= c.plannedQty) return true;
       if (c.commitment.outcome === 'not_done') return !!c.commitment.reason_code;
       return false;
     });

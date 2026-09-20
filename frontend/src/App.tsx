@@ -897,7 +897,12 @@ function AppContent() {
         return {
           ...commitment,
           actual_qty: cumulativeAchieved,
-          progress_percent: progressPercent
+          progress_percent: progressPercent,
+          // A completed quantity is a completed commitment; do not leave it
+          // pending for the closeout screen to reconcile manually.
+          outcome: plannedQty > 0 && cumulativeAchieved >= plannedQty
+            ? 'done' as const
+            : commitment.outcome
         };
       }
     );
