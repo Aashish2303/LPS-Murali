@@ -49,7 +49,6 @@ import { Toast } from './components/Toast';
 // Views
 import { DashboardView } from './components/views/DashboardView';
 import { PhaseScheduleView } from './components/views/PhaseScheduleView';
-import { PullPlanningView } from './components/views/PullPlanningView';
 import { LookaheadView } from './components/views/LookaheadView';
 import { MakeCommitmentsView } from './components/views/MakeCommitmentsView';
 import { DailyCheckInView } from './components/views/DailyCheckInView';
@@ -157,7 +156,6 @@ function AppContent() {
     const pathToNav: Record<string, NavItemKey> = {
       '/dashboard': 'dashboard',
       '/plan/phase': 'plan-phase',
-      '/plan/pull': 'plan-pull',
       '/plan/lookahead': 'plan-lookahead',
       '/week/commit': 'week-commit',
       '/week/work-plan': 'weekly-work-plan',
@@ -183,7 +181,6 @@ function AppContent() {
   const navToPath: Record<NavItemKey, string> = {
     dashboard: '/dashboard',
     'plan-phase': '/plan/phase',
-    'plan-pull': '/plan/pull',
     'plan-lookahead': '/plan/lookahead',
     'week-commit': '/week/commit',
     'weekly-work-plan': '/week/work-plan',
@@ -214,7 +211,6 @@ function AppContent() {
     const pathToNav: Record<string, NavItemKey> = {
       '/dashboard': 'dashboard',
       '/plan/phase': 'plan-phase',
-      '/plan/pull': 'plan-pull',
       '/plan/lookahead': 'plan-lookahead',
       '/week/commit': 'week-commit',
       '/week/work-plan': 'weekly-work-plan',
@@ -1249,7 +1245,7 @@ function AppContent() {
               metrics={metrics}
               onNavigate={navigateToNav}
               onResolveConstraint={handleResolveConstraint}
-              onQuickLogConstraint={() => navigateToNav('plan-pull')}
+              onQuickLogConstraint={() => navigateToNav('plan-lookahead')}
             />
           )}
 
@@ -1259,18 +1255,6 @@ function AppContent() {
               onAddPhase={handleAddPhase}
               onUpdatePhaseStatus={handleUpdatePhaseStatus}
               onImportTasks={handleImportTasks}
-            />
-          )}
-
-          {activeNav === 'plan-pull' && (
-            <PullPlanningView
-              data={data}
-              currentWeek={currentWeek}
-              onAddTask={handleAddTask}
-              onDeleteTask={handleDeleteTask}
-              onAddConstraint={handleAddConstraint}
-              onTogglePullPlanTask={handleTogglePullPlanTask}
-              onTogglePullPlanTasks={handleTogglePullPlanTasks}
             />
           )}
 

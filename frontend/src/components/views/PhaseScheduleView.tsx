@@ -390,7 +390,7 @@ export const PhaseScheduleView: React.FC<
           <p className="text-xs text-[#94a3b8] mt-1">
             Import the master schedule once. The system
             automatically creates the phase tasks used by
-            Pull Planning and Lookahead.
+            the Lookahead and Weekly Planning workflow.
           </p>
         </div>
 
@@ -1415,16 +1415,8 @@ export const PhaseScheduleView: React.FC<
                                   </div>
                                 </div>
 
-                                <span
-                                  className={
-                                    task.pull_planned
-                                      ? 'shrink-0 px-2 py-1 rounded text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-                                      : 'shrink-0 px-2 py-1 rounded text-xs bg-slate-800 text-slate-400 border border-slate-700'
-                                  }
-                                >
-                                  {task.pull_planned
-                                    ? 'Pull Planned'
-                                    : 'Master Schedule'}
+                                <span className="shrink-0 px-2 py-1 rounded text-xs bg-slate-800 text-slate-400 border border-slate-700">
+                                  Master Schedule
                                 </span>
                               </div>
                             </div>
@@ -1450,90 +1442,40 @@ export const PhaseScheduleView: React.FC<
       ====================================================== */}
 
       <div className="p-5 rounded-lg bg-[#0f172a] border border-[#334155]">
-
         <div className="flex items-center gap-2 mb-4">
-
           <GitBranch className="w-4 h-4 text-[#f59e0b]" />
-
           <h3 className="text-sm font-bold text-[#f8fafc]">
             LPS Planning Flow
           </h3>
-
         </div>
-
 
         <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2">
-
-          <div className="flex-1 p-3 rounded-lg bg-[#1e293b] border border-[#334155]">
-            <p className="text-[10px] uppercase text-[#64748b] font-bold">
-              01
-            </p>
-
-            <p className="text-xs font-bold text-[#f8fafc] mt-1">
-              Master Phase Schedule
-            </p>
-
-            <p className="text-[10px] text-[#94a3b8] mt-1">
-              XLSX / CSV
-            </p>
-          </div>
-
-
-          <ArrowRight className="hidden md:block w-4 h-4 text-[#64748b]" />
-
-
-          <div className="flex-1 p-3 rounded-lg bg-[#1e293b] border border-[#334155]">
-            <p className="text-[10px] uppercase text-[#64748b] font-bold">
-              02
-            </p>
-
-            <p className="text-xs font-bold text-[#f8fafc] mt-1">
-              Phase Tasks
-            </p>
-
-            <p className="text-[10px] text-[#94a3b8] mt-1">
-              Automatically created
-            </p>
-          </div>
-
-
-          <ArrowRight className="hidden md:block w-4 h-4 text-[#64748b]" />
-
-
-          <div className="flex-1 p-3 rounded-lg bg-[#1e293b] border border-[#334155]">
-            <p className="text-[10px] uppercase text-[#64748b] font-bold">
-              03
-            </p>
-
-            <p className="text-xs font-bold text-[#f8fafc] mt-1">
-              Pull Planning
-            </p>
-
-            <p className="text-[10px] text-[#94a3b8] mt-1">
-              Pull tasks backwards
-            </p>
-          </div>
-
-
-          <ArrowRight className="hidden md:block w-4 h-4 text-[#64748b]" />
-
-
-          <div className="flex-1 p-3 rounded-lg bg-[#1e293b] border border-[#334155]">
-            <p className="text-[10px] uppercase text-[#64748b] font-bold">
-              04
-            </p>
-
-            <p className="text-xs font-bold text-[#f8fafc] mt-1">
-              Lookahead
-            </p>
-
-            <p className="text-[10px] text-[#94a3b8] mt-1">
-              Make-ready planning
-            </p>
-          </div>
-
+          {[
+            ['01', 'Master Phase Schedule', 'XLSX / CSV'],
+            ['02', 'Phase Tasks', 'Automatically created'],
+            ['03', 'Lookahead', 'Automatic 3 / 4 / 5 week window'],
+            ['04', 'Weekly Plan / Commitment', 'Current-week ready work'],
+            ['05', 'Daily Check-in', 'Daily production actuals'],
+            ['06', 'Closeout', 'PPC & carry-forward']
+          ].map(([number, title, description], index) => (
+            <React.Fragment key={number}>
+              {index > 0 && (
+                <ArrowRight className="hidden md:block w-4 h-4 text-[#64748b]" />
+              )}
+              <div className="flex-1 p-3 rounded-lg bg-[#1e293b] border border-[#334155]">
+                <p className="text-[10px] uppercase text-[#64748b] font-bold">
+                  {number}
+                </p>
+                <p className="text-xs font-bold text-[#f8fafc] mt-1">
+                  {title}
+                </p>
+                <p className="text-[10px] text-[#94a3b8] mt-1">
+                  {description}
+                </p>
+              </div>
+            </React.Fragment>
+          ))}
         </div>
-
       </div>
 
     </div>

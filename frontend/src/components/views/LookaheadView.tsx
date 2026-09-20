@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -124,9 +124,7 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
   });
 
   const phaseScheduleTasks = data.tasks.filter(
-    (task) =>
-      task.trade === 'Phase Schedule' &&
-      task.pull_planned === true
+    (task) => task.trade === 'Phase Schedule'
   );
 
   const generatedLookaheadItems: LookaheadItem[] = [];
@@ -243,6 +241,19 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
     visibleWeeks.includes(item.week_key)
   );
 
+  useEffect(() => {
+    const missingItems = lookaheadItems.filter(
+      (item) =>
+        !data.lookahead.some(
+          (existing) =>
+            existing.task_id === item.task_id &&
+            existing.week_key === item.week_key
+        )
+    );
+
+    missingItems.forEach((item) => onAddToLookahead(item));
+  }, [data.lookahead, lookaheadItems, onAddToLookahead]);
+
   const handleAddLookaheadConstraint = (taskId: string) => {
     const description = window.prompt('Constraint description');
     if (!description?.trim()) return;
@@ -347,7 +358,7 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
           </div>
 
           <div className="text-xs text-[#94a3b8] mt-1">
-            3-6 Week Make-Ready Horizon
+            3-5 Week Make-Ready Horizon
           </div>
         </div>
 
@@ -461,12 +472,12 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
         <div className="flex items-start justify-between gap-4">
           <div>
             <h3 className="text-sm font-semibold text-slate-900">
-              Automatically pulled from Pull Planning
+              Automatically populated from Phase Schedule
             </h3>
 
             <p className="mt-1 text-xs text-slate-500">
-              Tasks selected in Pull Planning are automatically added
-              to the Lookahead horizon.
+              Phase Schedule activities overlapping the selected horizon
+              are automatically added to the Lookahead.
             </p>
           </div>
 
@@ -844,7 +855,7 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
             </div>
 
             <div className="text-[11px] text-[#94a3b8] mt-1">
-              Imported Phase Schedule → Pull Planning → Lookahead → Weekly Commitments
+              Phase Schedule → Lookahead → Weekly Plan / Commitment → Daily Check-in → Closeout
             </div>
 
           </div>

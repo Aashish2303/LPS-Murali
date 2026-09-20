@@ -506,6 +506,17 @@ export async function parsePhaseScheduleFile(
       throw new Error(`Task "${name}" has an invalid duration.`);
     }
 
+    const uom = String(
+      getValue(row, 'uom') ||
+      getValue(row, 'unit') ||
+      getValue(row, 'unit of measurement') ||
+      row['uom'] ||
+      row['UOM'] ||
+      row['Unit'] ||
+      row['Unit of Measurement'] ||
+      ''
+    ).trim();
+
     parsedRows.push({
       slNo,
       name,
@@ -523,7 +534,7 @@ export async function parsePhaseScheduleFile(
 
       quantity: quantityValue,
       durationDays,
-      uom: String(getValue(row, 'unit') ?? '').trim()
+      uom
     });
   });
 
