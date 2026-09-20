@@ -1671,6 +1671,10 @@ app.put(
               item.committed_by,
             progress_percent:
               item.progress_percent ?? null,
+            planned_qty:
+              Number(item.planned_qty) || 0,
+            actual_qty:
+              Number(item.actual_qty) || 0,
             reason_code:
               item.reason_code ?? null,
             reason_notes:
