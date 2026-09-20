@@ -1087,6 +1087,14 @@ export function getWeekKeysBetween(
   return weeks;
 }
 
+export function toLocalDateString(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
 export function getWeekStart(weekKey: string): string {
   const match = weekKey.match(/^(\d{4})-W(\d{2})$/);
 
@@ -1103,7 +1111,7 @@ export function getWeekStart(weekKey: string): string {
     jan4.getDate() - day + 1 + (week - 1) * 7
   );
 
-  return monday.toISOString().split('T')[0];
+  return toLocalDateString(monday);
 }
 
 export function getWeekEnd(weekKey: string): string {
@@ -1114,7 +1122,7 @@ export function getWeekEnd(weekKey: string): string {
   const end = new Date(`${start}T00:00:00`);
   end.setDate(end.getDate() + 7);
 
-  return end.toISOString().split('T')[0];
+  return toLocalDateString(end);
 }
 
 /*

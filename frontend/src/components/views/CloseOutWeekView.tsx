@@ -11,7 +11,7 @@ import {
   Calendar
 } from 'lucide-react';
 import { LPSData, REASON_CODES } from '../../types';
-import { computeMetrics, formatDate, getCoachingDiagnosis, getWeekEnd, getWeekKeyForDate, getWeekStart } from '../../services/storage';
+import { computeMetrics, formatDate, toLocalDateString, getCoachingDiagnosis, getWeekEnd, getWeekKeyForDate, getWeekStart } from '../../services/storage';
 
 interface CloseOutWeekViewProps {
   data: LPSData;
@@ -45,11 +45,11 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
     const firstIsoStart = getWeekStart(getWeekKeyForDate(configuredProjectStart));
     const offset = Math.round((new Date(`${isoWeekStart}T00:00:00`).getTime() - new Date(`${firstIsoStart}T00:00:00`).getTime()) / 604800000);
     start.setDate(start.getDate() + offset * 7);
-    return start.toISOString().split('T')[0];
+    return toLocalDateString(start);
   })();
   const closeoutDateValue = new Date(`${weekStart}T00:00:00`);
   closeoutDateValue.setDate(closeoutDateValue.getDate() + 7);
-  const closeoutDate = closeoutDateValue.toISOString().split('T')[0];
+  const closeoutDate = toLocalDateString(closeoutDateValue);
   const projectStart = configuredProjectStart || weekStart;
   const projectStartWeek = getWeekKeyForDate(projectStart);
   const previousWeek = (() => {
@@ -136,7 +136,7 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
     for (let offset = 0; offset < 7 && cumulative < plannedQty; offset += 1) {
       const date = new Date(`${weekStart}T00:00:00`);
       date.setDate(date.getDate() + offset);
-      const day = date.toISOString().split('T')[0];
+      const day = toLocalDateString(date);
       const entry = data.actuals.find((actual) => actual.commitment_id === commitment.id && actual.day_date === day);
       if (!entry) return false;
       cumulative += Number(entry.achieved_qty || 0);
@@ -408,10 +408,13 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
                       </label>
                       <select
                         id={`select-reason-${commitment.id}`}
-                        value={commitment.reason_code || 1}
+                        value={commitment.reason_code || ''}
                         onChange={(e) => handleSelectReason(commitment.id, Number(e.target.value))}
                         className="w-full px-3 py-2 bg-[#0f172a] border border-red-500/40 rounded-lg text-xs text-[#f8fafc] focus:border-[#f59e0b] focus:outline-none"
                       >
+                        <option value="" disabled>
+                          Select a reason code…
+                        </option>
                         {REASON_CODES.map((rc) => (
                           <option key={rc.id} value={rc.id}>
                             {rc.code}: {rc.title} ({rc.description})

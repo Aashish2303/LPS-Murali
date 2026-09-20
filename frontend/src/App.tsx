@@ -37,6 +37,7 @@ import {
   loadProjects,
   saveProjects,
   saveProjectData,
+  toLocalDateString,
   setSessionUser,
   clearSessionUser,
   syncProjectsFromServer,
@@ -1042,8 +1043,8 @@ function AppContent() {
         .filter(
           (actual) =>
             actual.commitment_id === commitment.id &&
-            actual.day_date >= (weekStartDate?.toISOString().split('T')[0] ?? '') &&
-            actual.day_date < weekEndDate.toISOString().split('T')[0]
+            actual.day_date >= (weekStartDate ? toLocalDateString(weekStartDate) : '') &&
+            actual.day_date < toLocalDateString(weekEndDate)
         )
         .reduce(
           (sum, actual) =>
