@@ -365,6 +365,39 @@ function AppContent() {
     return weeks;
   };
 
+  const getNextWeekKey = (weekKey: string): string => {
+    const match = weekKey.match(/^(\d{4})-W(\d{2})$/);
+    if (!match) return weekKey;
+    const year = Number(match[1]);
+    const week = Number(match[2]);
+    return week >= 52
+      ? `${year + 1}-W01`
+      : `${year}-W${String(week + 1).padStart(2, '0')}`;
+  };
+
+  // The only editable operating week is the first project week without a
+  // closed metric. This prevents commitments/check-ins being entered ahead.
+  const getFirstOpenWeek = (): string => {
+    const projectStart = data.config.startDate || data.config.start_date;
+    if (!projectStart) return currentWeek;
+    let week = getISOWeekKey(new Date(`${projectStart}T00:00:00`));
+    while (data.metrics.some((metric) => metric.week_key === week && metric.status === 'Closed')) {
+      week = getNextWeekKey(week);
+    }
+    return week;
+  };
+
+  const firstOpenWeek = getFirstOpenWeek();
+
+  useEffect(() => {
+    const selectedStart = getWeekStart(currentWeek)?.getTime() ?? 0;
+    const openStart = getWeekStart(firstOpenWeek)?.getTime() ?? 0;
+    if (selectedStart > openStart) {
+      updateData({ ...data, config: { ...data.config, current_week_key: firstOpenWeek } });
+      showToast(`Finish and close ${firstOpenWeek} before entering the next week.`, 'warning');
+    }
+  }, [currentWeek, firstOpenWeek, data.metrics]);
+
   // Compute live metrics for the current week
   const metrics = computeMetrics(currentWeek, data);
 
@@ -413,6 +446,10 @@ function AppContent() {
 
   // Week change handler
   const handleSelectWeek = (week: string) => {
+    if (week !== firstOpenWeek) {
+      showToast(`Week ${firstOpenWeek} must be closed before you can work in ${week}.`, 'warning');
+      return;
+    }
     const updated = {
       ...data,
       config: {
@@ -729,6 +766,10 @@ function AppContent() {
 
   // Commitment Actions
   const handleAddCommitment = (com: Commitment) => {
+    if (com.week_key !== firstOpenWeek) {
+      showToast(`Commitments are locked until ${firstOpenWeek} is closed.`, 'warning');
+      return;
+    }
     const task = data.tasks.find((t) => t.id === com.task_id);
 
     if (!task) {
