@@ -1,3 +1,4 @@
+import { formatWeek } from '../../utils/weekLabel';
 import React from 'react';
 import { Sparkles, Award, Layers, Clock, ShieldAlert, TrendingUp, ChevronRight } from 'lucide-react';
 import { LPSData, MetricRecord, NavItemKey } from '../../types';
@@ -95,7 +96,7 @@ export const ThisWeekMetricsView: React.FC<ThisWeekMetricsViewProps> = ({
             <h2 className="text-lg font-bold text-[#f8fafc]">This Week's Last Planner Performance KPI Rings</h2>
           </div>
           <p className="text-xs text-[#94a3b8] mt-1">
-            Live evaluation of Week {currentWeek} commitment reliability, make-ready flow, and constraint velocity.
+            Live evaluation of {formatWeek(currentWeek)} commitment reliability, make-ready flow, and constraint velocity.
           </p>
         </div>
       </div>

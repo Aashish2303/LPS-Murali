@@ -1,3 +1,4 @@
+import { formatWeek } from '../../utils/weekLabel';
 import React from 'react';
 import {
   Calendar,
@@ -50,7 +51,7 @@ export const WeeklyWorkPlanView: React.FC<
             </h1>
 
             <p className="text-sm text-[#94a3b8] mt-1">
-              Week {currentWeek} • Approved weekly commitments
+              {formatWeek(currentWeek)} • Approved weekly commitments
             </p>
           </div>
         </div>
@@ -118,7 +119,7 @@ export const WeeklyWorkPlanView: React.FC<
           <div className="px-5 py-4 border-b border-[#334155]">
 
             <h2 className="text-sm font-bold text-[#f8fafc]">
-              Weekly Work Plan — Week {currentWeek}
+              Weekly Work Plan — {formatWeek(currentWeek)}
             </h2>
 
             <p className="text-[11px] text-[#94a3b8] mt-1">

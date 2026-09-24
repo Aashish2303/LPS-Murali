@@ -1407,16 +1407,25 @@ export function computeMetrics(
  * ---------------------------------------------------------
  */
 
+export function constraintAppliesToWeek(
+  constraint: LPSData['constraints'][number],
+  weekKey?: string
+): boolean {
+  return !weekKey || !constraint.week_key || constraint.week_key === weekKey;
+}
+
 export function getOpenConstraintCount(
   taskId: string,
-  constraints: LPSData['constraints']
+  constraints: LPSData['constraints'],
+  weekKey?: string
 ): number {
   return constraints.filter(
     (c) =>
       c.task_id ===
         taskId &&
       c.status !==
-        'Resolved'
+        'Resolved' &&
+      constraintAppliesToWeek(c, weekKey)
   ).length;
 }
 
@@ -1429,7 +1438,8 @@ export function refreshLookaheadReadiness(
       const openCount =
         getOpenConstraintCount(
           item.task_id,
-          constraints
+          constraints,
+          item.week_key
         );
 
       return {

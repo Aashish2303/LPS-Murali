@@ -1,3 +1,4 @@
+import { formatWeek } from '../../utils/weekLabel';
 import React, { useMemo, useState } from 'react';
 import {
   Layers,
@@ -403,7 +404,7 @@ export const PullPlanningView: React.FC<PullPlanningViewProps> = ({
 
         <div className="flex items-center gap-2 text-xs flex-wrap">
           <span className="px-3 py-1.5 rounded-full bg-[#0f172a] border border-[#334155] text-[#38bdf8]">
-            Planning Week: <strong>{currentWeek}</strong>
+            Planning Week: <strong>{formatWeek(currentWeek)}</strong>
           </span>
 
           <span className="px-3 py-1.5 rounded-full bg-slate-900 border border-[#334155] text-[#94a3b8]">

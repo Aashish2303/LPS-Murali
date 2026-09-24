@@ -1,3 +1,4 @@
+import { setProjectWeeks, formatWeek } from './utils/weekLabel';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   BrowserRouter,
@@ -28,6 +29,7 @@ import {
   computeMetrics,
   generateId,
   getOpenConstraintCount,
+  constraintAppliesToWeek,
   refreshLookaheadReadiness,
   exportDataAsJSON,
   exportDataAsSpreadsheet,
@@ -463,11 +465,12 @@ function AppContent() {
     data.commitments,
     data.config.current_week_key
   ]);
+  setProjectWeeks(availableWeeks);
 
   // Week change handler
   const handleSelectWeek = (week: string) => {
     if (week !== firstOpenWeek) {
-      showToast(`Week ${firstOpenWeek} must be closed before you can work in ${week}.`, 'warning');
+      showToast(`${formatWeek(firstOpenWeek)} must be closed before you can work in ${formatWeek(week)}.`, 'warning');
       return;
     }
     const updated = {
@@ -620,7 +623,8 @@ function AppContent() {
 
         const openConstraints = getOpenConstraintCount(
           taskId,
-          data.constraints
+          data.constraints,
+          weekKey
         );
 
         const newLookaheadItem: LookaheadItem = {
@@ -692,7 +696,7 @@ function AppContent() {
         planned_qty: plannedQty,
         carry_forward_qty: 0,
         remaining_qty: plannedQty,
-        ready: getOpenConstraintCount(task.id, data.constraints) === 0,
+        ready: getOpenConstraintCount(task.id, data.constraints, weekKey) === 0,
         notes: ''
       });
     });
@@ -702,7 +706,7 @@ function AppContent() {
       tasks: updatedTasks,
       lookahead: refreshLookaheadReadiness(updatedLookahead, data.constraints)
     });
-    showToast(`${selectedTasks.length} task(s) added to Pull Planning for ${weekKey}.`, 'success');
+    showToast(`${selectedTasks.length} task(s) added to Pull Planning for ${formatWeek(weekKey)}.`, 'success');
   };
 
   // Constraint Actions
@@ -800,7 +804,8 @@ function AppContent() {
     const openConstraints = data.constraints.filter(
       (constraint) =>
         constraint.task_id === com.task_id &&
-        constraint.status !== 'Resolved'
+        constraint.status !== 'Resolved' &&
+        constraintAppliesToWeek(constraint, com.week_key)
     );
 
     if (openConstraints.length > 0) {
@@ -908,17 +913,6 @@ function AppContent() {
       updatedActuals.push(actual);
     }
 
-    const commitmentForActual = data.commitments.find((commitment) => commitment.id === actual.commitment_id);
-    const plannedForActual = Number(commitmentForActual?.planned_qty ?? 0);
-    const otherDaysTotal = updatedActuals
-      .filter((entry) => entry.commitment_id === actual.commitment_id && entry.day_date !== actual.day_date)
-      .reduce((sum, entry) => sum + (Number(entry.achieved_qty) || 0), 0);
-    const remainingForToday = Math.max(0, plannedForActual - otherDaysTotal);
-    if (plannedForActual > 0 && Number(actual.achieved_qty) > remainingForToday + 0.000001) {
-      showToast(`Daily quantity cannot exceed the remaining weekly commitment (${remainingForToday.toFixed(2)}).`, 'warning');
-      return;
-    }
-
     const updatedCommitments = data.commitments.map(
       (commitment) => {
         if (commitment.id !== actual.commitment_id) {
@@ -931,8 +925,9 @@ function AppContent() {
             lookahead.week_key === commitment.week_key
         );
 
+        // Same target the closeout screen scores against.
         const plannedQty =
-          Number(commitmentLookahead?.planned_qty) || 0;
+          Number(commitment.planned_qty ?? commitmentLookahead?.planned_qty) || 0;
 
         const commitmentActuals = updatedActuals.filter(
           (entry) => entry.commitment_id === commitment.id
@@ -992,7 +987,7 @@ function AppContent() {
     const previousWeekKey = previousStart ? getISOWeekKey(previousStart) : '';
     const isFirstProjectWeek = !projectStart || getISOWeekKey(new Date(`${projectStart}T00:00:00`)) === weekKey;
     if (!isFirstProjectWeek && !data.metrics.some((metric) => metric.week_key === previousWeekKey && metric.status === 'Closed')) {
-      showToast(`Close out ${previousWeekKey} before moving to ${weekKey}.`, 'warning');
+      showToast(`Close out ${formatWeek(previousWeekKey)} before moving to ${formatWeek(weekKey)}.`, 'warning');
       return;
     }
     const getNextWeekKey = (selectedWeekKey: string): string => {
@@ -1057,6 +1052,65 @@ function AppContent() {
         plannedQty - actualQty
       );
 
+      // Crews can execute ahead of plan. When they do, pull the surplus
+      // out of this task's upcoming (not-yet-committed) weeks instead of
+      // discarding it, so the remaining plan reflects the real work left.
+      const overageQty = Math.max(0, actualQty - plannedQty);
+
+      if (overageQty > 0) {
+        let remainingOverage = overageQty;
+
+        const futureTaskItems = updatedLookahead
+          .filter(
+            (item) =>
+              item.task_id === commitment.task_id &&
+              item.week_key > weekKey &&
+              !data.commitments.some(
+                (c) =>
+                  c.task_id === item.task_id &&
+                  c.week_key === item.week_key
+              )
+          )
+          .sort((a, b) => (a.week_key < b.week_key ? -1 : 1));
+
+        const reductionById = new Map<string, number>();
+
+        for (const item of futureTaskItems) {
+          if (remainingOverage <= 0) break;
+
+          const currentPlanned = Number(item.planned_qty) || 0;
+          const reduction = Math.min(currentPlanned, remainingOverage);
+
+          if (reduction <= 0) continue;
+
+          reductionById.set(item.id, reduction);
+          remainingOverage -= reduction;
+        }
+
+        if (reductionById.size > 0) {
+          updatedLookahead = updatedLookahead.map((item) => {
+            const reduction = reductionById.get(item.id);
+
+            if (!reduction) return item;
+
+            return {
+              ...item,
+              planned_qty:
+                (Number(item.planned_qty) || 0) - reduction,
+              carry_forward_qty:
+                (Number(item.carry_forward_qty) || 0) - reduction,
+              remaining_qty: Math.max(
+                0,
+                (Number(item.remaining_qty) || 0) - reduction
+              ),
+              notes: item.notes
+                ? `${item.notes} Reduced by ${reduction} — ahead of plan from ${weekKey}.`
+                : `Reduced by ${reduction} — ahead of plan from ${weekKey}.`
+            };
+          });
+        }
+      }
+
       if (remainingQty <= 0) {
         continue;
       }
@@ -1090,7 +1144,8 @@ function AppContent() {
       } else {
         const openConstraints = getOpenConstraintCount(
           commitment.task_id,
-          data.constraints
+          data.constraints,
+          nextWeekKey
         );
 
         const newLookaheadItem: LookaheadItem = {
@@ -1140,7 +1195,7 @@ function AppContent() {
     });
 
     showToast(
-      `Week ${weekKey} closed. Unfinished quantities carried forward to ${nextWeekKey}.`,
+      `${formatWeek(weekKey)} closed. Unfinished quantities carried forward to ${formatWeek(nextWeekKey)}.`,
       'success'
     );
   };
@@ -1452,7 +1507,7 @@ function AppContent() {
           )}
 
           {activeNav === 'metrics-trends' && (
-            <TrendsView data={data} />
+            <TrendsView data={data} liveMetrics={metrics} />
           )}
 
           {activeNav === 'metrics-coaching' && (

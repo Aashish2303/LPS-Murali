@@ -1,3 +1,4 @@
+import { formatWeek } from '../../utils/weekLabel';
 import React from 'react';
 import { HelpCircle, TrendingUp, ShieldAlert, Award, Clock, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { LPSData, MetricRecord } from '../../types';
@@ -30,7 +31,7 @@ export const CoachingView: React.FC<CoachingViewProps> = ({
           </p>
         </div>
         <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#0f172a] border border-[#334155] text-[#f59e0b]">
-          Week {currentWeek}
+          {formatWeek(currentWeek)}
         </span>
       </div>
 

@@ -1,14 +1,20 @@
+import { formatWeek } from '../../utils/weekLabel';
 import React from 'react';
 import { TrendingUp, Lock, Unlock, Award } from 'lucide-react';
 import { LPSData, MetricRecord } from '../../types';
 
 interface TrendsViewProps {
   data: LPSData;
+  liveMetrics?: MetricRecord;
 }
 
-export const TrendsView: React.FC<TrendsViewProps> = ({ data }) => {
-  // Grab last 8 weeks sorted chronologically or reverse
-  const records = [...data.metrics].slice(-8);
+export const TrendsView: React.FC<TrendsViewProps> = ({ data, liveMetrics }) => {
+  // Closed weeks are stored; the in-progress week is live, so append it if not yet stored
+  const stored = [...data.metrics];
+  if (liveMetrics && !stored.some((m) => m.week_key === liveMetrics.week_key) && liveMetrics.total_committed > 0) {
+    stored.push({ ...liveMetrics, status: 'Open' } as MetricRecord);
+  }
+  const records = stored.sort((a, b) => a.week_key.localeCompare(b.week_key)).slice(-8);
 
   const getCellColor = (val: number | null) => {
     if (val === null) return 'text-[#94a3b8] bg-slate-900/40';
@@ -126,7 +132,7 @@ export const TrendsView: React.FC<TrendsViewProps> = ({ data }) => {
                     fontSize="9"
                     fontFamily="Inter"
                   >
-                    {r.week_key.replace(/^[0-9]{4}-/, '')}
+                    {formatWeek(r.week_key)}
                   </text>
                 </g>
               );
@@ -162,7 +168,7 @@ export const TrendsView: React.FC<TrendsViewProps> = ({ data }) => {
                 return (
                   <tr key={r.week_key} className="hover:bg-[#0f172a]/50 transition-colors">
                     <td className="py-3 px-3 font-bold text-[#f8fafc] flex items-center gap-2">
-                      <span className="text-[#f59e0b] font-mono">{r.week_key}</span>
+                      <span className="text-[#f59e0b] font-mono">{formatWeek(r.week_key)}</span>
                     </td>
 
                     <td className={`py-3 px-3 text-center rounded ${getCellColor(r.ppc)}`}>

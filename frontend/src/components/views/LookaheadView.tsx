@@ -1,3 +1,4 @@
+import { formatWeek } from '../../utils/weekLabel';
 import React, { useEffect, useState } from 'react';
 import {
   AlertTriangle,
@@ -21,6 +22,7 @@ import {
   computeFloat,
   formatDate,
   getOpenConstraintCount,
+  constraintAppliesToWeek,
   getWeekKeyForDate,
   generateId
 } from '../../services/storage';
@@ -227,19 +229,24 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
 
         week_key: weekKey,
 
+        // carry_forward_qty can be negative — a task executed ahead of
+        // plan reduces what's left to schedule in this week. Never let
+        // that push the displayed planned quantity below zero.
         planned_qty:
-          plannedQty + (Number(existingItem?.carry_forward_qty) || 0),
+          Math.max(0, plannedQty + (Number(existingItem?.carry_forward_qty) || 0)),
 
         carry_forward_qty:
           existingItem?.carry_forward_qty ?? 0,
 
         remaining_qty:
-          existingItem?.remaining_qty ?? plannedQty + (Number(existingItem?.carry_forward_qty) || 0),
+          existingItem?.remaining_qty ??
+          Math.max(0, plannedQty + (Number(existingItem?.carry_forward_qty) || 0)),
 
         ready:
           getOpenConstraintCount(
             task.id,
-            data.constraints
+            data.constraints,
+            weekKey
           ) === 0,
 
         notes:
@@ -265,13 +272,14 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
     missingItems.forEach((item) => onAddToLookahead(item));
   }, [data.lookahead, lookaheadItems, onAddToLookahead]);
 
-  const handleAddLookaheadConstraint = (taskId: string) => {
+  const handleAddLookaheadConstraint = (taskId: string, weekKey: string) => {
     const description = window.prompt('Constraint description');
     if (!description?.trim()) return;
 
     onAddConstraint({
       id: generateId('CON'),
       task_id: taskId,
+      week_key: weekKey,
       type: 'Materials',
       description: description.trim(),
       raised_by: 'Lookahead Planner',
@@ -302,7 +310,8 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
   const readyTasks = lookaheadItems.filter((item) => {
     const openCount = getOpenConstraintCount(
       item.task_id,
-      data.constraints
+      data.constraints,
+      item.week_key
     );
 
     return openCount === 0;
@@ -311,7 +320,8 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
   const blockedTasks = lookaheadItems.filter((item) => {
     const openCount = getOpenConstraintCount(
       item.task_id,
-      data.constraints
+      data.constraints,
+      item.week_key
     );
 
     return openCount > 0;
@@ -380,7 +390,7 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
 
           <div className="text-2xl font-extrabold text-[#f59e0b] mt-1.5 flex items-center gap-2">
             <Calendar className="w-5 h-5 text-[#f59e0b]" />
-            <span>Week {currentWeek}</span>
+            <span>{formatWeek(currentWeek)}</span>
           </div>
 
           <div className="text-xs text-[#94a3b8] mt-1">
@@ -444,7 +454,7 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
           </span>
 
           <div className="text-xs font-bold text-[#f8fafc]">
-            {currentWeek}
+            {formatWeek(currentWeek)}
           </div>
         </div>
 
@@ -577,7 +587,8 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
                   data.constraints.filter(
                     (c) =>
                       c.task_id === task.id &&
-                      c.status !== 'Resolved'
+                      c.status !== 'Resolved' &&
+                      constraintAppliesToWeek(c, item.week_key)
                   );
 
                 const floatVal =
@@ -612,7 +623,7 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
                     <div className="flex items-center justify-between text-[11px] text-[#94a3b8]">
 
                       <span>
-                        Week: {item.week_key}
+                        {formatWeek(item.week_key)}
                         {' • '}
                         Qty: {item.planned_qty} {task.uom}
                       </span>
@@ -684,7 +695,7 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => handleAddLookaheadConstraint(task.id)}
+                        onClick={() => handleAddLookaheadConstraint(task.id, item.week_key)}
                         className="text-left text-[11px] font-bold text-[#f59e0b] hover:text-[#f8fafc]"
                       >
                         + Add Constraint
@@ -788,7 +799,7 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
                     <div className="flex items-center justify-between text-[11px] text-[#94a3b8]">
 
                       <span>
-                        Week: {item.week_key}
+                        {formatWeek(item.week_key)}
                         {' • '}
                         Qty: {item.planned_qty} {task.uom}
                       </span>
@@ -811,7 +822,7 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
                       <div className="mt-1">Material · Drawing · Manpower · Access</div>
                       <button
                         type="button"
-                        onClick={() => handleAddLookaheadConstraint(task.id)}
+                        onClick={() => handleAddLookaheadConstraint(task.id, item.week_key)}
                         className="mt-2 text-left font-bold text-[#f59e0b] hover:text-[#f8fafc]"
                       >
                         + Add Constraint

@@ -1,7 +1,8 @@
+import { formatWeek } from '../../utils/weekLabel';
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarCheck, ShieldAlert, CheckCircle2, Save, Calendar, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ActualEntry, LPSData, REASON_CODES } from '../../types';
-import { formatDate, generateId } from '../../services/storage';
+import { formatDate, generateId, constraintAppliesToWeek } from '../../services/storage';
 
 interface DailyCheckInViewProps {
   data: LPSData;
@@ -91,9 +92,11 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
     return data.commitments
       .filter(
         (c) =>
-          c.week_key === currentWeek &&
-          c.outcome !== 'done'
+          c.week_key === currentWeek
       )
+      // A commitment that already hit 'done' still needs to stay
+      // available here — actual execution can run ahead of the plan,
+      // and crews may log more completed quantity on a later day.
       .map((commitment) => {
         const task = data.tasks.find(
           (t) => t.id === commitment.task_id
@@ -202,12 +205,8 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
     value: number | string | null
   ) => {
     if (field === 'achieved') {
-      const commitment = data.commitments.find((item) => item.id === commitmentId);
-      const plannedQty = Number(commitment?.planned_qty || 0);
-      const recordedElsewhere = data.actuals
-        .filter((entry) => entry.commitment_id === commitmentId && entry.day_date !== selectedDate)
-        .reduce((sum, entry) => sum + Number(entry.achieved_qty || 0), 0);
-      value = Math.min(Math.max(0, Number(value) || 0), Math.max(0, plannedQty - recordedElsewhere));
+      // Each activity is entered independently; only negatives are rejected.
+      value = Math.max(0, Number(value) || 0);
     }
     setRowStates((prev) => ({
       ...prev,
@@ -242,11 +241,6 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
 
     const planned = Number(row.planned) || 0;
     const achieved = Number(row.achieved) || 0;
-
-    const otherDaysTotal = data.actuals
-      .filter((entry) => entry.commitment_id === commitmentId && entry.day_date !== selectedDate)
-      .reduce((sum, entry) => sum + Number(entry.achieved_qty || 0), 0);
-    if (achieved > Math.max(0, Number(commitment.planned_qty || 0) - otherDaysTotal) + 0.000001) return;
 
     if (achieved < planned && !row.reasonCode) {
       return;
@@ -288,7 +282,9 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
     workDate: string
   ): boolean => {
     const taskConstraints = data.constraints.filter(
-      (constraint) => constraint.task_id === taskId
+      (constraint) =>
+        constraint.task_id === taskId &&
+        constraintAppliesToWeek(constraint, currentWeek)
     );
 
     const unresolvedConstraint = taskConstraints.some(
@@ -384,7 +380,7 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
           </button>
           <div className="text-center">
             <div className="text-[10px] uppercase font-bold tracking-wider text-[#94a3b8]">Daily Production Simulation</div>
-            <div className="text-base font-extrabold text-[#f8fafc]">{currentWeek}</div>
+            <div className="text-base font-extrabold text-[#f8fafc]">{formatWeek(currentWeek)}</div>
             <div className="text-xs font-bold text-[#38bdf8]">{selectedDateObject.toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' })}</div>
           </div>
           <button type="button" onClick={() => changeDay(1)} disabled={dayIndex === 6} className="px-3 py-2 rounded-lg border border-[#334155] text-xs font-bold text-[#cbd5e1] disabled:opacity-40 flex items-center gap-1">
@@ -412,11 +408,33 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
             );
           })}
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs text-[#cbd5e1]">
-          <span>Planned Quantity <strong className="block text-[#38bdf8]">{weeklyPlannedCommitmentQty.toFixed(2)}</strong></span>
-          <span>Actual Quantity <strong className="block text-[#10b981]">{weeklyActualCommitmentQty.toFixed(2)}</strong></span>
-          <span>Remaining <strong className="block text-[#f59e0b]">{Math.max(0, weeklyPlannedCommitmentQty - weeklyActualCommitmentQty).toFixed(2)}</strong></span>
-          <span>PPC <strong className="block text-[#f8fafc]">{weeklyPpc}%</strong></span>
+        <div className="space-y-2 text-xs text-[#cbd5e1]">
+          {weeklyCommitted.map((commitment) => {
+            const task = data.tasks.find((t) => t.id === commitment.task_id);
+            const planned = Number(commitment.planned_qty || 0);
+            const actual = data.actuals
+              .filter((entry) => entry.commitment_id === commitment.id && weekDays.includes(entry.day_date))
+              .reduce((sum, entry) => sum + Number(entry.achieved_qty || 0), 0);
+            const remaining = Math.max(0, planned - actual);
+            const done = planned > 0 && actual >= planned;
+            const percent = planned > 0 ? Math.min(100, Math.floor((actual / planned) * 100)) : 0;
+            return (
+              <div key={commitment.id} className="p-3 rounded-lg bg-[#0f172a] border border-[#334155] space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-bold text-[#f8fafc] truncate">{task?.description || commitment.task_id}</span>
+                  <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold border ${done ? 'bg-emerald-500/20 text-[#10b981] border-emerald-500/30' : 'bg-amber-500/20 text-[#f59e0b] border-amber-500/30'}`}>
+                    {done ? 'Done' : 'In progress'} · {percent}%
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <span>Planned <strong className="block text-[#38bdf8]">{planned.toFixed(2)} {task?.uom}</strong></span>
+                  <span>Actual <strong className="block text-[#10b981]">{actual.toFixed(2)} {task?.uom}</strong></span>
+                  <span>Remaining <strong className="block text-[#f59e0b]">{remaining.toFixed(2)} {task?.uom}</strong></span>
+                </div>
+              </div>
+            );
+          })}
+          <div className="text-right">Week PPC <strong className="text-[#f8fafc]">{weeklyPpc}%</strong></div>
         </div>
       </div>
 
@@ -516,7 +534,6 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
                     <input
                       type="number"
                       min="0"
-                      max={remainingQuantity}
                       disabled={!workAllowed}
                       value={row.achieved}
                       onChange={(e) => handleRowChange(commitment.id, 'achieved', Number(e.target.value))}

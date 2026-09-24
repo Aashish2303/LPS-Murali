@@ -490,6 +490,9 @@ app.post(
                 task_id:
                   item.task_id ||
                   null,
+                week_key:
+                  item.week_key ||
+                  null,
                 type: item.type,
                 status: item.status,
                 raised_by:
@@ -506,6 +509,9 @@ app.post(
                   null,
                 resolved_date:
                   item.resolved_date ||
+                  null,
+                resolution_reason:
+                  item.resolution_reason ||
                   null
               })
             );
@@ -1645,6 +1651,8 @@ app.put(
             id: item.id,
             task_id:
               item.task_id || null,
+            week_key:
+              item.week_key || null,
             type: item.type,
             status: item.status,
             raised_by:
@@ -1658,7 +1666,9 @@ app.put(
             target_date:
               item.target_date || null,
             resolved_date:
-              item.resolved_date || null
+              item.resolved_date || null,
+            resolution_reason:
+              item.resolution_reason || null
           })
         )
       );

@@ -92,6 +92,8 @@ export type ConstraintType =
 export interface Constraint {
   id: string;
   task_id: string;
+  // Week the constraint blocks. Absent on legacy constraints, which block every week.
+  week_key?: string;
   type: ConstraintType;
   description: string;
   raised_by: string;

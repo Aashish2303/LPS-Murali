@@ -1,3 +1,4 @@
+import { formatWeek } from '../../utils/weekLabel';
 import React, { useMemo, useState } from 'react';
 import {
   Award,
@@ -131,6 +132,9 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
       .reduce((sum, actual) => sum + Number(actual.achieved_qty || 0), 0);
     // Once the weekly quantity is met, no further daily entries are required.
     if (plannedQty > 0 && totalRecorded >= plannedQty) return true;
+    // A Not Done item with a reason code is already explained; don't also
+    // block closeout on every missing day entry.
+    if (commitment.outcome === 'not_done' && commitment.reason_code) return true;
 
     let cumulative = 0;
     for (let offset = 0; offset < 7 && cumulative < plannedQty; offset += 1) {
@@ -205,7 +209,7 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="text-xs uppercase tracking-wider text-[#94a3b8] font-semibold">
-              Weekly Closeout Ceremony — Week {currentWeek}
+              Weekly Closeout Ceremony — {formatWeek(currentWeek)}
             </div>
             <h2 className="text-xl font-extrabold text-[#f8fafc] mt-1">
               Commitment Review & Reason Analysis
@@ -264,7 +268,7 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
         {weekCommitments.length === 0 ? (
           <div className="p-12 text-center bg-[#1e293b] border border-dashed border-[#334155] rounded-lg text-[#94a3b8]">
             <Clock className="w-8 h-8 mx-auto text-[#64748b] mb-2" />
-            <p className="font-semibold text-[#f8fafc]">No Commitments Found For Week {currentWeek}</p>
+            <p className="font-semibold text-[#f8fafc]">No Commitments Found For {formatWeek(currentWeek)}</p>
             <p className="text-xs mt-1">Make commitments first under Weekly Cycle → Make Commitments.</p>
           </div>
         ) : (
@@ -434,7 +438,7 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
       {/* Close Out Action Button */}
       {!previousWeekClosed && (
         <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-300">
-          Close out {previousWeek} first. Weekly check-ins and closeouts must be completed in sequence.
+          Close out {formatWeek(previousWeek)} first. Weekly check-ins and closeouts must be completed in sequence.
         </div>
       )}
       <div className="p-4 rounded-lg bg-[#1e293b] border border-[#334155]">
@@ -494,7 +498,7 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
             <div>
               <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-[#f59e0b] border border-amber-500/30 inline-flex items-center gap-1">
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Week {currentWeek} Official Close-Out Record</span>
+                <span>{formatWeek(currentWeek)} Official Close-Out Record</span>
               </span>
               <h2 className="text-2xl font-extrabold text-[#f8fafc] mt-2">Weekly Performance Reveal</h2>
             </div>

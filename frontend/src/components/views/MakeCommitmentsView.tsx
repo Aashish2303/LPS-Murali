@@ -1,3 +1,4 @@
+import { formatWeek } from '../../utils/weekLabel';
 import React, { useState } from 'react';
 import {
   CheckSquare,
@@ -9,7 +10,7 @@ import {
   Clock
 } from 'lucide-react';
 import { Commitment, LPSData, Task } from '../../types';
-import { formatDate, generateId } from '../../services/storage';
+import { formatDate, generateId, constraintAppliesToWeek } from '../../services/storage';
 
 interface MakeCommitmentsViewProps {
   data: LPSData;
@@ -323,7 +324,7 @@ export const MakeCommitmentsView: React.FC<MakeCommitmentsViewProps> = ({
             <CheckSquare className="w-5 h-5 text-[#10b981]" />
 
             <span>
-              Weekly Work Plan — Week {currentWeek}
+              Weekly Work Plan — {formatWeek(currentWeek)}
             </span>
           </h2>
 
@@ -368,7 +369,7 @@ export const MakeCommitmentsView: React.FC<MakeCommitmentsViewProps> = ({
           </h3>
 
           <span className="text-xs text-[#94a3b8]">
-            Filtered from Lookahead — Week {currentWeek}
+            Filtered from Lookahead — {formatWeek(currentWeek)}
           </span>
         </div>
 
@@ -393,7 +394,8 @@ export const MakeCommitmentsView: React.FC<MakeCommitmentsViewProps> = ({
                 const openConstraints = data.constraints.filter(
                   (constraint) =>
                     constraint.task_id === task.id &&
-                    constraint.status !== 'Resolved'
+                    constraint.status !== 'Resolved' &&
+                    constraintAppliesToWeek(constraint, lookahead.week_key)
                 );
                 const isReady = openConstraints.length === 0;
 
@@ -448,7 +450,7 @@ export const MakeCommitmentsView: React.FC<MakeCommitmentsViewProps> = ({
                         <div className="text-[#38bdf8]">
                           Commitment Week:{' '}
                           <strong>
-                            {currentWeek}
+                            {formatWeek(currentWeek)}
                           </strong>
                         </div>
 
@@ -575,7 +577,7 @@ export const MakeCommitmentsView: React.FC<MakeCommitmentsViewProps> = ({
             <CheckSquare className="w-4 h-4 text-[#f59e0b]" />
 
             <span>
-              Active Commitments for Week {currentWeek} (
+              Active Commitments for {formatWeek(currentWeek)} (
               {thisWeekCommitments.length}
               )
             </span>
