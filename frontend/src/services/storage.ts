@@ -1095,7 +1095,7 @@ export function toLocalDateString(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-export function getWeekStart(weekKey: string): string {
+export function getWeekStart(weekKey: string, projectStart?: string): string {
   const match = weekKey.match(/^(\d{4})-W(\d{2})$/);
 
   if (!match) return '';
@@ -1110,12 +1110,30 @@ export function getWeekStart(weekKey: string): string {
   monday.setDate(
     jan4.getDate() - day + 1 + (week - 1) * 7
   );
+  monday.setHours(0, 0, 0, 0);
+
+  // When a project start date is supplied, anchor the week boundary to that
+  // date instead of the plain ISO Monday. DailyCheckInView, CloseOutWeekView
+  // and App.tsx already compute week boundaries this way (the first project
+  // week begins on the actual start date, not the ISO Monday). Without this,
+  // actuals saved against the project-anchored week can fall outside the
+  // plain-ISO window this function used to return, which made PPC read 0
+  // here even though the week's commitments were completed.
+  if (projectStart) {
+    const start = new Date(`${projectStart}T00:00:00`);
+    const firstMonday = new Date(start);
+    const firstDay = firstMonday.getDay() || 7;
+    firstMonday.setDate(firstMonday.getDate() - firstDay + 1);
+    const offsetWeeks = Math.round((monday.getTime() - firstMonday.getTime()) / 604800000);
+    start.setDate(start.getDate() + offsetWeeks * 7);
+    return toLocalDateString(start);
+  }
 
   return toLocalDateString(monday);
 }
 
-export function getWeekEnd(weekKey: string): string {
-  const start = getWeekStart(weekKey);
+export function getWeekEnd(weekKey: string, projectStart?: string): string {
+  const start = getWeekStart(weekKey, projectStart);
 
   if (!start) return '';
 
@@ -1130,6 +1148,63 @@ export function getWeekEnd(weekKey: string): string {
  * TASK / FLOAT
  * ---------------------------------------------------------
  */
+
+/**
+ * A task is considered complete once the total achieved quantity logged
+ * against all of its commitments reaches its total planned quantity.
+ * Falls back to the manual `status` field for tasks that don't carry a
+ * total_quantity (so legacy/manual tasks aren't blocked incorrectly).
+ */
+export function isTaskComplete(
+  task: Task,
+  data: LPSData
+): boolean {
+  const totalQuantity = Number(task.total_quantity) || 0;
+
+  if (totalQuantity <= 0) {
+    return task.status === 'Complete';
+  }
+
+  const commitmentIds = data.commitments
+    .filter((commitment) => commitment.task_id === task.id)
+    .map((commitment) => commitment.id);
+
+  const achieved = data.actuals
+    .filter((actual) => commitmentIds.includes(actual.commitment_id))
+    .reduce((sum, actual) => sum + (Number(actual.achieved_qty) || 0), 0);
+
+  return achieved >= totalQuantity;
+}
+
+/**
+ * Enforces Finish-to-Start sequencing from the predecessor data captured by
+ * the Phase Schedule import (Task.predecessors / Task.precedence_type).
+ * Returns the list of predecessor tasks that are blocking progress on
+ * `task` because they have not finished yet. An empty array means the task
+ * is free to log progress as far as the network diagram is concerned (this
+ * does not account for constraints, which are checked separately).
+ */
+export function getBlockingPredecessors(
+  task: Task,
+  data: LPSData
+): Task[] {
+  if (
+    !task.predecessors ||
+    task.predecessors.length === 0 ||
+    task.precedence_type !== 'FS'
+  ) {
+    return [];
+  }
+
+  return task.predecessors
+    .map((predecessorId) =>
+      data.tasks.find((candidate) => candidate.id === predecessorId)
+    )
+    .filter(
+      (predecessor): predecessor is Task =>
+        !!predecessor && !isTaskComplete(predecessor, data)
+    );
+}
 
 export function computeFloat(
   task: Task,
@@ -1233,6 +1308,14 @@ export function computeMetrics(
   weekKey: string,
   data: LPSData = getData()
 ): MetricRecord {
+  // Anchor week boundaries to the configured project start date (same
+  // convention used by DailyCheckInView/CloseOutWeekView/App.tsx when saving
+  // daily actuals). Previously this used the plain ISO Monday boundary,
+  // which could exclude actuals saved under the project-anchored week and
+  // make PPC read 0 despite the week's commitments being completed.
+  const projectStart =
+    data.config.startDate || data.config.start_date;
+
   const comms =
     data.commitments.filter(
       (c) =>
@@ -1264,8 +1347,8 @@ export function computeMetrics(
         .filter(
           (actual) =>
             actual.commitment_id === commitment.id &&
-            actual.day_date >= getWeekStart(weekKey) &&
-            actual.day_date < getWeekEnd(weekKey)
+            actual.day_date >= getWeekStart(weekKey, projectStart) &&
+            actual.day_date < getWeekEnd(weekKey, projectStart)
         )
         .reduce(
           (sum, actual) =>
@@ -1299,8 +1382,8 @@ export function computeMetrics(
         .filter(
           (actual) =>
             actual.commitment_id === commitment.id &&
-            actual.day_date >= getWeekStart(weekKey) &&
-            actual.day_date < getWeekEnd(weekKey)
+            actual.day_date >= getWeekStart(weekKey, projectStart) &&
+            actual.day_date < getWeekEnd(weekKey, projectStart)
         )
         .reduce(
           (total, actual) =>
@@ -1337,12 +1420,14 @@ export function computeMetrics(
    */
   const weekStart =
     getWeekStart(
-      weekKey
+      weekKey,
+      projectStart
     );
 
   const weekEnd =
     getWeekEnd(
-      weekKey
+      weekKey,
+      projectStart
     );
 
   const raised =

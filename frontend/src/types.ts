@@ -75,6 +75,16 @@ export interface Task {
   // selects them for Pull Planning.
   pull_planned?: boolean;
   lookahead_planned?: boolean;
+
+  // Network-diagram dependency data. Populated by the Phase Schedule
+  // import (see storage.ts parsePhaseScheduleFile/importPhaseSchedule and
+  // backend/server.ts's phase-schedule endpoint), which already captures a
+  // "Predecessor" column and persists it per task. Currently used only to
+  // compute CPM float; `canLogProgressForTask` in storage.ts additionally
+  // enforces Finish-to-Start sequencing from it (a predecessor task must be
+  // complete before progress can be logged against its successor).
+  predecessors?: string[];
+  precedence_type?: 'FS';
 }
 
 export type ConstraintType =
@@ -255,7 +265,14 @@ export const REASON_CODES: ReasonCode[] = [
   { id: 13, code: 'RC-13', title: 'Client — Client approval delay', category: 'Client', description: 'Owner/consultant hold point, sign-off, or scope clarification delay.' },
   { id: 14, code: 'RC-14', title: 'Payment — Sub-contractor payment dispute', category: 'Commercial', description: 'Subcontractor work stoppage due to commercial disputes.' },
   { id: 15, code: 'RC-15', title: 'Prev. Delay — Dependent task not complete', category: 'Sequence', description: 'Preceding trade did not finish handover in time.' },
+  // "Others" lets the field team record a reason not covered by the fixed
+  // list above. The UI pairs this code with a required free-text field
+  // (Commitment.reason_notes / ActualEntry.note) instead of leaving the
+  // real reason unrecorded.
+  { id: 16, code: 'RC-16', title: 'Other — specify reason', category: 'Other', description: 'Use when none of the listed reason codes apply. A free-text explanation is required.' },
 ];
+
+export const OTHER_REASON_CODE_ID = 16;
 
 export type NavItemKey =
   | 'dashboard'
