@@ -676,7 +676,7 @@ function AppContent() {
 
       if (!existingItem) {
         const totalQuantity = Number(task.total_quantity) || 0;
-        const durationDays = Number(task.duration_days) || 1;
+        const durationDays = Math.max(1, Number(task.duration_days) || 1);
 
         const dailyQuantity =
           Number(task.daily_planned_quantity) ||
@@ -684,9 +684,26 @@ function AppContent() {
 
         const weekKey = data.config.current_week_key;
 
+        // The weekly planned quantity must never exceed what's left of the
+        // task's total quantity. Without this cap, a short task
+        // (duration_days < 7) or a task already partly allocated to an
+        // earlier week could get a weekly figure larger than the task's
+        // total — a wrong "weekly" number next to a correct daily one
+        // (class feedback item 8).
+        const alreadyAllocated = data.lookahead
+          .filter((item) => item.task_id === taskId)
+          .reduce((sum, item) => sum + (Number(item.planned_qty) || 0), 0);
+        const remainingQuantity =
+          totalQuantity > 0
+            ? Math.max(0, totalQuantity - alreadyAllocated)
+            : Infinity;
+
         const plannedQty =
           Math.round(
-            dailyQuantity * Math.min(durationDays, 7) * 100
+            Math.min(
+              dailyQuantity * Math.min(durationDays, 7),
+              remainingQuantity
+            ) * 100
           ) / 100;
 
         const openConstraints = getOpenConstraintCount(
@@ -753,7 +770,27 @@ function AppContent() {
       const totalQuantity = Number(task.total_quantity) || 0;
       const durationDays = Math.max(1, Number(task.duration_days) || 1);
       const dailyQuantity = Number(task.daily_planned_quantity) || totalQuantity / durationDays;
-      const plannedQty = Math.round(dailyQuantity * 7 * 100) / 100;
+
+      // Same fix as handleTogglePullPlanTask: cap the weekly figure at the
+      // task's duration (a flat *7 overstated any task shorter than a
+      // week) and at whatever quantity is still left after earlier weeks'
+      // allocations, instead of a flat 7-day multiple that could exceed
+      // the task's total quantity (class feedback item 8).
+      const alreadyAllocated = updatedLookahead
+        .filter((item) => item.task_id === task.id)
+        .reduce((sum, item) => sum + (Number(item.planned_qty) || 0), 0);
+      const remainingQuantity =
+        totalQuantity > 0
+          ? Math.max(0, totalQuantity - alreadyAllocated)
+          : Infinity;
+
+      const plannedQty =
+        Math.round(
+          Math.min(
+            dailyQuantity * Math.min(durationDays, 7),
+            remainingQuantity
+          ) * 100
+        ) / 100;
 
       updatedLookahead.push({
         id: generateId('LKH'),
