@@ -1,8 +1,8 @@
 import { formatWeek } from '../../utils/weekLabel';
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarCheck, ShieldAlert, CheckCircle2, Save, Calendar, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
-import { ActualEntry, LPSData, REASON_CODES } from '../../types';
-import { formatDate, generateId, constraintAppliesToWeek } from '../../services/storage';
+import { ActualEntry, LPSData, REASON_CODES, OTHER_REASON_CODE_ID } from '../../types';
+import { formatDate, generateId, constraintAppliesToWeek, getBlockingPredecessors } from '../../services/storage';
 
 interface DailyCheckInViewProps {
   data: LPSData;
@@ -231,7 +231,8 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
 
     if (
       !commitment ||
-      !canWorkOnDate(commitment.task_id, selectedDate)
+      !canWorkOnDate(commitment.task_id, selectedDate) ||
+      getPredecessorBlock(commitment.task_id)
     ) {
       return;
     }
@@ -243,6 +244,12 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
     const achieved = Number(row.achieved) || 0;
 
     if (achieved < planned && !row.reasonCode) {
+      return;
+    }
+
+    // "Others" requires the free-text note so the real reason is captured
+    // instead of being lost.
+    if (achieved < planned && row.reasonCode === OTHER_REASON_CODE_ID && !row.note?.trim()) {
       return;
     }
 
@@ -272,9 +279,9 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
       }
     }));
 
-    const nextDay = new Date(`${selectedDate}T00:00:00`);
-    nextDay.setDate(nextDay.getDate() + 1);
-    setSelectedDate(toISODate(nextDay));
+    // Stay on the same day after saving — when a day has multiple
+    // activities, the crew needs to come back and submit progress for the
+    // other activities one by one instead of being bounced to the next day.
   };
 
   const canWorkOnDate = (
@@ -309,7 +316,23 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
       return true;
     }
 
-    return workDate > latestResolutionDate;
+    // A constraint resolved on a given day unblocks work starting that same
+    // day, not only from the next day onward.
+    return workDate >= latestResolutionDate;
+  };
+
+  // Finish-to-Start network-diagram enforcement: a successor task cannot
+  // have progress logged until its predecessor(s) are complete.
+  const getPredecessorBlock = (taskId: string): string | null => {
+    const task = data.tasks.find((item) => item.id === taskId);
+    if (!task) return null;
+
+    const blocking = getBlockingPredecessors(task, data);
+    if (blocking.length === 0) return null;
+
+    return `Blocked by predecessor${blocking.length > 1 ? 's' : ''}: ${blocking
+      .map((p) => p.description)
+      .join(', ')}`;
   };
 
   // Open constraints
@@ -476,10 +499,11 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
                 .filter((entry) => entry.commitment_id === commitment.id && entry.day_date !== selectedDate)
                 .reduce((sum, entry) => sum + Number(entry.achieved_qty || 0), 0);
               const remainingQuantity = Math.max(0, Number(commitment.planned_qty || 0) - recordedElsewhere);
+              const predecessorBlock = getPredecessorBlock(commitment.task_id);
               const workAllowed = canWorkOnDate(
                 commitment.task_id,
                 selectedDate
-              );
+              ) && !predecessorBlock;
 
               // Color code achieved input: green when >= planned, amber when partial > 0, red when 0
               let achievedStyle = 'border-slate-700 bg-[#0f172a] text-[#f8fafc]';
@@ -512,7 +536,9 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
                       <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-400">
                         Work cannot be recorded for this date.
                         <br />
-                        The constraint was resolved later, so execution starts on the next working day.
+                        {predecessorBlock
+                          ? predecessorBlock
+                          : 'An open constraint is still blocking this activity for this week.'}
                       </div>
                     )}
                   </div>
@@ -584,6 +610,12 @@ export const DailyCheckInView: React.FC<DailyCheckInViewProps> = ({
                         {!row.reasonCode && (
                           <p className="text-[10px] text-red-400 mt-1">
                             Required when actual is less than planned.
+                          </p>
+                        )}
+
+                        {row.reasonCode === OTHER_REASON_CODE_ID && !row.note?.trim() && (
+                          <p className="text-[10px] text-red-400 mt-1">
+                            "Other" selected — fill in the Daily Log Note above with the actual reason.
                           </p>
                         )}
                       </div>
