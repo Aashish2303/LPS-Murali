@@ -68,7 +68,11 @@ interface LookaheadViewProps {
   onAddConstraint: (constraint: Constraint) => void;
   onUpdateConstraint: (constraint: Constraint) => void;
   onResolveConstraint: (constraintId: string, reason: string) => void;
-  onSetLookaheadWeeks: (weeks: 3 | 4 | 5) => void;
+  // Widened from a fixed 3/4/5 to accommodate trades (e.g. long-lead
+  // materials/equipment mobilization) that need visibility further out
+  // than a 5-week horizon. Still a simple project-level setting, not a
+  // structural change to how the lookahead is computed.
+  onSetLookaheadWeeks: (weeks: number) => void;
   onNavigateToCommit: () => void;
 }
 
@@ -89,8 +93,10 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
    * ---------------------------------------------------------
    */
 
-  const lookaheadWeeks = (data.config.lookahead_weeks === 3 || data.config.lookahead_weeks === 5
-    ? data.config.lookahead_weeks : 4) as 3 | 4 | 5;
+  const lookaheadWeeks =
+    Number(data.config.lookahead_weeks) >= 3 && Number(data.config.lookahead_weeks) <= 8
+      ? Number(data.config.lookahead_weeks)
+      : 4;
 
   const getWeekOffset = (weekKey: string) => {
     const match = weekKey.match(
@@ -116,7 +122,7 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
 
   const availableWeeks = Array.from(new Set([
     ...data.lookahead.map((item) => item.week_key),
-    ...Array.from({ length: 5 }, (_, offset) => {
+    ...Array.from({ length: lookaheadWeeks }, (_, offset) => {
       const date = getWeekStart(currentWeek);
       if (!date) return '';
       date.setDate(date.getDate() + offset * 7);
@@ -129,9 +135,20 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
     return offset !== null && offset >= 0 && offset < lookaheadWeeks;
   });
 
-  const phaseScheduleTasks = data.tasks.filter(
-    (task) => task.trade === 'Phase Schedule'
-  );
+  // Activities are walked in schedule/sequence order (by start date, then
+  // task id) rather than whatever order the data array happens to be in —
+  // otherwise the Ready/Needs-Clearing columns list activities out of
+  // sequence when raising or reviewing constraints.
+  const phaseScheduleTasks = data.tasks
+    .filter((task) => task.trade === 'Phase Schedule')
+    .sort((a, b) => {
+      const aDate = a.eps || a.planned_start || a.must_finish_by || '';
+      const bDate = b.eps || b.planned_start || b.must_finish_by || '';
+      if (aDate && bDate && aDate !== bDate) {
+        return aDate < bDate ? -1 : 1;
+      }
+      return a.id.localeCompare(b.id, undefined, { numeric: true });
+    });
 
   const generatedLookaheadItems: LookaheadItem[] = [];
 
@@ -459,11 +476,11 @@ export const LookaheadView: React.FC<LookaheadViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          {[3, 4, 5].map((weeks) => (
+          {[3, 4, 5, 6, 7, 8].map((weeks) => (
             <button
               key={weeks}
               type="button"
-              onClick={() => onSetLookaheadWeeks(weeks as 3 | 4 | 5)}
+              onClick={() => onSetLookaheadWeeks(weeks)}
               className={`px-3 py-1.5 rounded-md text-xs font-bold border transition-colors ${
                 lookaheadWeeks === weeks
                   ? 'bg-[#38bdf8] text-[#0f172a] border-[#38bdf8]'

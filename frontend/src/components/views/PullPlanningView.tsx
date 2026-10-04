@@ -87,35 +87,50 @@ export const PullPlanningView: React.FC<PullPlanningViewProps> = ({
 
   const currentWeekRange = getWeekRange(currentWeek);
 
-  const availableTasks = data.tasks.filter((task) => {
-    if (task.pull_planned) return false;
+  // Activities must appear in schedule/sequence order (not whatever order
+  // the backend happened to return rows in) wherever a task list is used to
+  // raise or review constraints — otherwise foremen pick the wrong
+  // predecessor/successor when giving constraints out of sequence.
+  const bySequence = (a: Task, b: Task) => {
+    const aDate = a.eps || a.planned_start || a.must_finish_by || '';
+    const bDate = b.eps || b.planned_start || b.must_finish_by || '';
+    if (aDate && bDate && aDate !== bDate) {
+      return aDate < bDate ? -1 : 1;
+    }
+    return a.id.localeCompare(b.id, undefined, { numeric: true });
+  };
 
-    if (!currentWeekRange) return false;
+  const availableTasks = data.tasks
+    .filter((task) => {
+      if (task.pull_planned) return false;
 
-    const taskStart = task.eps
-      ? new Date(task.eps)
-      : null;
+      if (!currentWeekRange) return false;
 
-    const taskFinish = task.epf
-      ? new Date(task.epf)
-      : task.must_finish_by
-        ? new Date(task.must_finish_by)
+      const taskStart = task.eps
+        ? new Date(task.eps)
         : null;
 
-    if (!taskStart && !taskFinish) return false;
+      const taskFinish = task.epf
+        ? new Date(task.epf)
+        : task.must_finish_by
+          ? new Date(task.must_finish_by)
+          : null;
 
-    const startsBeforeWeekEnds =
-      !taskStart || taskStart <= currentWeekRange.end;
+      if (!taskStart && !taskFinish) return false;
 
-    const finishesAfterWeekStarts =
-      !taskFinish || taskFinish >= currentWeekRange.start;
+      const startsBeforeWeekEnds =
+        !taskStart || taskStart <= currentWeekRange.end;
 
-    return startsBeforeWeekEnds && finishesAfterWeekStarts;
-  });
+      const finishesAfterWeekStarts =
+        !taskFinish || taskFinish >= currentWeekRange.start;
 
-  const pullPlannedTasks = data.tasks.filter(
-    (task) => task.pull_planned === true
-  );
+      return startsBeforeWeekEnds && finishesAfterWeekStarts;
+    })
+    .sort(bySequence);
+
+  const pullPlannedTasks = data.tasks
+    .filter((task) => task.pull_planned === true)
+    .sort(bySequence);
 
   /*
    * ---------------------------------------------------------
