@@ -207,10 +207,10 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
         <ShieldAlert className="w-6 h-6 text-[#f59e0b] shrink-0" />
         <div className="text-xs">
           <div className="font-bold text-sm text-[#f59e0b]">
-            Sacred LPS Rule: Strict Binary Scoring (1 or 0)
+            Sacred LPS Rule: Strict Binary Scoring (Done / Not Done)
           </div>
           <div className="text-[#94a3b8] mt-0.5">
-            Every commitment must have a final outcome recorded. 90% or 99% done is scored strictly as <strong>Not Done (0%)</strong>. Every non-completion requires an assigned Reason Code to drive systemic learning.
+            Every commitment must have a final outcome recorded. 90% or 99% complete is still scored strictly as <strong>Not Done</strong> — the actual quantity progress stays visible on each card below, this binary outcome is only what drives PPC. Every non-completion requires an assigned Reason Code to drive systemic learning.
           </div>
         </div>
       </div>
@@ -389,8 +389,14 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
                       >
                         <CheckCircle2 className="w-4 h-4" />
                         <span>
+                          {/* LPS closeout is a strict binary (Done / Not Done) outcome,
+                              separate from the genuine partial-progress % shown above in
+                              the "Quantity Progress" card. Labeling this button "(100%)"
+                              was read by users as a second, conflicting percentage for the
+                              same commitment (class feedback item 1) — it now just says
+                              Done, with the quantity reason spelled out instead. */}
                           {autoDone
-                            ? '✅ Done (100%)'
+                            ? '✅ Done — quantity met'
                             : '✅ Done (Manual)'}
                         </span>
                       </button>
@@ -408,7 +414,7 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
                         <AlertCircle className="w-4 h-4" />
                         <span>
                           {autoNotDone
-                            ? '❌ Not Done (0%)'
+                            ? '❌ Not Done — quantity short'
                             : '❌ Not Done (Manual)'}
                         </span>
                       </button>
