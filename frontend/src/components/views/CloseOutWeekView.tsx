@@ -11,13 +11,13 @@ import {
   Lock,
   Calendar
 } from 'lucide-react';
-import { LPSData, REASON_CODES } from '../../types';
+import { LPSData, REASON_CODES, OTHER_REASON_CODE_ID } from '../../types';
 import { computeMetrics, formatDate, toLocalDateString, getCoachingDiagnosis, getWeekEnd, getWeekKeyForDate, getWeekStart } from '../../services/storage';
 
 interface CloseOutWeekViewProps {
   data: LPSData;
   currentWeek: string;
-  onUpdateCommitmentOutcome: (commitmentId: string, outcome: 'done' | 'not_done', reasonCode?: number, actualQty?: number) => void;
+  onUpdateCommitmentOutcome: (commitmentId: string, outcome: 'done' | 'not_done', reasonCode?: number, actualQty?: number, reasonNotes?: string) => void;
   onCloseOutWeek: (
     weekKey: string,
     finalPpc: number,
@@ -153,7 +153,14 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
     totalCommitted > 0 && dailyCheckinsComplete &&
     weekCommitments.every((c) => {
       if (c.plannedQty > 0 && c.actualQty >= c.plannedQty) return true;
-      if (c.commitment.outcome === 'not_done') return !!c.commitment.reason_code;
+      if (c.commitment.outcome === 'not_done') {
+        // "Other" requires the free-text explanation to be filled in too,
+        // otherwise the real reason never gets captured for learning.
+        if (c.commitment.reason_code === OTHER_REASON_CODE_ID) {
+          return !!c.commitment.reason_notes?.trim();
+        }
+        return !!c.commitment.reason_code;
+      }
       return false;
     });
 
@@ -162,6 +169,10 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
 
   const handleSelectReason = (commitmentId: string, reasonCode: number) => {
     onUpdateCommitmentOutcome(commitmentId, 'not_done', reasonCode);
+  };
+
+  const handleReasonNotesChange = (commitmentId: string, reasonCode: number, notes: string) => {
+    onUpdateCommitmentOutcome(commitmentId, 'not_done', reasonCode, undefined, notes);
   };
 
   const handleExecuteCloseOut = () => {
@@ -425,6 +436,24 @@ export const CloseOutWeekView: React.FC<CloseOutWeekViewProps> = ({
                           </option>
                         ))}
                       </select>
+
+                      {commitment.reason_code === OTHER_REASON_CODE_ID && (
+                        <div>
+                          <label className="block text-[10px] font-semibold text-red-300 mb-1">
+                            Describe the reason (required):
+                          </label>
+                          <input
+                            id={`input-reason-notes-${commitment.id}`}
+                            type="text"
+                            value={commitment.reason_notes || ''}
+                            onChange={(e) =>
+                              handleReasonNotesChange(commitment.id, OTHER_REASON_CODE_ID, e.target.value)
+                            }
+                            placeholder="e.g. Crane relocated to another site for 2 days"
+                            className="w-full px-3 py-2 bg-[#0f172a] border border-red-500/40 rounded-lg text-xs text-[#f8fafc] placeholder-[#64748b] focus:border-[#f59e0b] focus:outline-none"
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
