@@ -276,6 +276,7 @@ export const OTHER_REASON_CODE_ID = 16;
 
 export type NavItemKey =
   | 'dashboard'
+  | 'plan-master'
   | 'plan-phase'
   | 'plan-pull'
   | 'plan-lookahead'

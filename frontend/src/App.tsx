@@ -53,6 +53,7 @@ import { Toast } from './components/Toast';
 // Views
 import { DashboardView } from './components/views/DashboardView';
 import { PhaseScheduleView } from './components/views/PhaseScheduleView';
+import { MasterPlanView } from './components/views/MasterPlanView';
 import { LookaheadView } from './components/views/LookaheadView';
 import { MakeCommitmentsView } from './components/views/MakeCommitmentsView';
 import { DailyCheckInView } from './components/views/DailyCheckInView';
@@ -159,6 +160,7 @@ function AppContent() {
   const [activeNav, setActiveNav] = useState<NavItemKey>(() => {
     const pathToNav: Record<string, NavItemKey> = {
       '/dashboard': 'dashboard',
+      '/plan/master': 'plan-master',
       '/plan/phase': 'plan-phase',
       '/plan/lookahead': 'plan-lookahead',
       '/week/commit': 'week-commit',
@@ -184,6 +186,7 @@ function AppContent() {
 
   const navToPath: Record<NavItemKey, string> = {
     dashboard: '/dashboard',
+    'plan-master': '/plan/master',
     'plan-phase': '/plan/phase',
     'plan-pull': '/plan/pull',
     'plan-lookahead': '/plan/lookahead',
@@ -215,6 +218,7 @@ function AppContent() {
   useEffect(() => {
     const pathToNav: Record<string, NavItemKey> = {
       '/dashboard': 'dashboard',
+      '/plan/master': 'plan-master',
       '/plan/phase': 'plan-phase',
       '/plan/lookahead': 'plan-lookahead',
       '/week/commit': 'week-commit',
@@ -1524,6 +1528,10 @@ function AppContent() {
               }}
               onQuickLogConstraint={() => navigateToNav('plan-lookahead')}
             />
+          )}
+
+          {activeNav === 'plan-master' && (
+            <MasterPlanView data={data} />
           )}
 
           {activeNav === 'plan-phase' && (

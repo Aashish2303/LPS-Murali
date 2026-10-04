@@ -84,6 +84,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Planning',
       icon: '📅',
       children: [
+        { key: 'plan-master', label: 'Master Plan', icon: '🧭' },
         { key: 'plan-phase', label: 'Phase Schedule', icon: '📅' },
         {
           key: 'plan-lookahead',
