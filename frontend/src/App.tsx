@@ -1,5 +1,5 @@
 import { setProjectWeeks, formatWeek } from './utils/weekLabel';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   BrowserRouter,
   Routes,
@@ -248,8 +248,66 @@ function AppContent() {
     setToast({ message, type });
   };
 
+  /*
+   * Save requests are serialized instead of fired one-per-call.
+   *
+   * updateData() is invoked on almost every keystroke/interaction across
+   * the app, with no debounce. Previously each call kicked off its own
+   * concurrent PUT to the backend — under fast typing or a slow network
+   * this produced a pile of overlapping requests, which could complete
+   * out of order (a stale request finishing after a newer one, silently
+   * reverting data), time out, or simply appear as repeated
+   * "Unable to save" errors because every single one of them surfaced
+   * its own toast.
+   *
+   * saveQueueRef tracks whether a save is in flight and the most recent
+   * project snapshot that still needs to reach the server. Only one PUT
+   * is ever outstanding at a time; any snapshots that arrive while a
+   * save is running are coalesced into "latest" and sent as a single
+   * follow-up save once the in-flight one finishes, so the server always
+   * ends up with the newest data without racing requests against each
+   * other. Errors are only surfaced once the queue is settled, not once
+   * per intermediate keystroke.
+   */
+  const saveQueueRef = useRef<{
+    inFlight: boolean;
+    latest: ProjectRecord | null;
+  }>({ inFlight: false, latest: null });
+
+  const flushSaveQueue = async () => {
+    if (saveQueueRef.current.inFlight) {
+      return;
+    }
+
+    const next = saveQueueRef.current.latest;
+    if (!next) {
+      return;
+    }
+
+    saveQueueRef.current.latest = null;
+    saveQueueRef.current.inFlight = true;
+
+    try {
+      const saved = await saveProjectData(next);
+
+      if (!saved) {
+        showToast(
+          'Unable to save to the server. Retrying in the background — your edits are kept locally.',
+          'error'
+        );
+      }
+    } finally {
+      saveQueueRef.current.inFlight = false;
+
+      // Another edit may have queued up while this save was in flight.
+      if (saveQueueRef.current.latest) {
+        flushSaveQueue();
+      }
+    }
+  };
+
   // Sync data to localStorage on changes
-  const updateData = async (newData: LPSData) => {
+  const updateData = (newData: LPSData) => {
     setData(newData);
     saveLPSData(newData);
 
@@ -272,22 +330,12 @@ function AppContent() {
       (project) => project.id === selectedProjectId
     );
 
-    const saved = currentProject
-      ? await saveProjectData(currentProject)
-      : false;
-
-    if (!saved) {
-      showToast(
-        'Failed to save changes to server',
-        'error'
-      );
+    if (!currentProject) {
       return;
     }
 
-    showToast(
-      'Changes saved successfully',
-      'success'
-    );
+    saveQueueRef.current.latest = currentProject;
+    flushSaveQueue();
   };
 
   const handleLogin = (email: string) => {
@@ -467,12 +515,23 @@ function AppContent() {
   ]);
   setProjectWeeks(availableWeeks);
 
-  // Week change handler
+  // Week change handler.
+  // Planning/editing is still restricted to the first unclosed week, but
+  // prior (already closed) weeks can be opened for READ-ONLY viewing so
+  // users can check past status/progress — only navigating AHEAD of the
+  // open week is blocked. The individual write handlers (daily actuals,
+  // commitments, outcomes, closeout) independently re-check that the week
+  // being written to is still the open week, so a closed week stays
+  // read-only even if a view's form is still visibly interactive.
   const handleSelectWeek = (week: string) => {
-    if (week !== firstOpenWeek) {
+    const targetStart = getWeekStart(week)?.getTime() ?? 0;
+    const openStart = getWeekStart(firstOpenWeek)?.getTime() ?? 0;
+
+    if (targetStart > openStart) {
       showToast(`${formatWeek(firstOpenWeek)} must be closed before you can work in ${formatWeek(week)}.`, 'warning');
       return;
     }
+
     const updated = {
       ...data,
       config: {
@@ -481,7 +540,12 @@ function AppContent() {
       }
     };
     updateData(updated);
-    showToast(`Switched active workspace to ${week}`, 'info');
+
+    if (week !== firstOpenWeek) {
+      showToast(`Viewing ${formatWeek(week)} (read-only — this week is closed).`, 'info');
+    } else {
+      showToast(`Switched active workspace to ${week}`, 'info');
+    }
   };
 
   // Milestone Actions
@@ -857,8 +921,15 @@ function AppContent() {
     commitmentId: string,
     outcome: 'done' | 'not_done',
     reasonCode?: number,
-    actualQty?: number
+    actualQty?: number,
+    reasonNotes?: string
   ) => {
+    const targetCommitment = data.commitments.find((c) => c.id === commitmentId);
+    if (targetCommitment && targetCommitment.week_key !== firstOpenWeek) {
+      showToast(`${formatWeek(targetCommitment.week_key)} is closed and read-only.`, 'warning');
+      return;
+    }
+
     const updatedCommitments = data.commitments.map((c) => {
       if (c.id !== commitmentId) return c;
 
@@ -887,6 +958,10 @@ function AppContent() {
           autoOutcome === 'not_done'
             ? (reasonCode ?? c.reason_code ?? 1)
             : undefined,
+        reason_notes:
+          autoOutcome === 'not_done'
+            ? (reasonNotes ?? c.reason_notes)
+            : undefined,
         actual_qty: actual,
         progress_percent: progress
       };
@@ -899,6 +974,14 @@ function AppContent() {
   };
 
   const handleSaveDailyActual = (actual: ActualEntry) => {
+    const ownerCommitment = data.commitments.find(
+      (c) => c.id === actual.commitment_id
+    );
+    if (ownerCommitment && ownerCommitment.week_key !== firstOpenWeek) {
+      showToast(`${formatWeek(ownerCommitment.week_key)} is closed and read-only.`, 'warning');
+      return;
+    }
+
     const existingIndex = data.actuals.findIndex(
       (a) =>
         a.commitment_id === actual.commitment_id &&
@@ -980,6 +1063,13 @@ function AppContent() {
     finalPpc: number,
     closeoutDate: string
   ) => {
+    // Viewing a past, already-closed week (see handleSelectWeek) must stay
+    // read-only — closeout can only ever be performed for the one open week.
+    if (weekKey !== firstOpenWeek) {
+      showToast(`${formatWeek(weekKey)} is already closed and read-only.`, 'warning');
+      return;
+    }
+
     const selectedStart = getWeekStart(weekKey);
     const projectStart = data.config.startDate || data.config.start_date;
     const previousStart = selectedStart ? new Date(selectedStart) : null;
